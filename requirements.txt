@@ -1,5 +1,7 @@
 mido>=1.2.0
 # Opcionales (no requeridos para funcionalidad básica):
-# fluidsynth — para preview de audio
+# fluidsynth — para preview de audio (binario nativo, no pip)
+# ffmpeg/ffplay — para reproducir el preview (binario nativo, no pip)
 # openmpt123 — para validación de .it
 # pvsneslib (smconv) — para conversión a .bnk
+# Build del .exe: pyinstaller>=6.0

@@ -2,15 +2,23 @@
 core/it_builder.py — Construye archivos .it compatibles con smconv de PVSNESlib.
 Usa bgm.it como template estructural para mantener compatibilidad.
 """
-import struct, os
+import struct, os, sys
 
 # Ruta al template bgm.it (se configura desde afuera si es necesario)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '..', 'templates', 'bgm.it')
+
+
+def _bundle_template():
+    """Ruta al template cuando la app está empaquetada con PyInstaller."""
+    base = getattr(sys, '_MEIPASS', None)
+    return os.path.join(base, 'templates', 'bgm.it') if base else None
+
 
 def find_template(path=None):
     """Busca el template bgm.it en varias ubicaciones."""
     paths = [
         path,
+        _bundle_template(),                       # PyInstaller (.exe onefile)
         TEMPLATE_PATH,
         '/tmp/vs-snes/mvp/res/bgm.it',
         os.path.expanduser('~/.midi2it/templates/bgm.it'),
@@ -22,6 +30,24 @@ def find_template(path=None):
         "No se encontró bgm.it template. "
         "Descárgalo o cópialo desde un proyecto PVSNESlib existente."
     )
+
+
+def _parse_instrument_key(cfg, keys):
+    """Resuelve la clave de sample a usar para una pista.
+
+    Acepta cfg['instrument'] con formato "<idx>: nombre" (lo que envía la GUI)
+    o cfg['program'] entero. Cae al sample más cercano por número de programa.
+    """
+    if not keys:
+        return 0
+    instr = cfg.get('instrument')
+    if isinstance(instr, str) and ':' in instr:
+        head = instr.split(':', 1)[0].strip()
+        if head.isdigit():
+            k = int(head)
+            return k if k in keys else min(keys, key=lambda x: abs(x - k))
+    program = cfg.get('program', 0) or 0
+    return min(keys, key=lambda k: abs(k - program))
 
 
 def build(midi_data, samples_data, output_path, template_path=None,
@@ -46,26 +72,32 @@ def build(midi_data, samples_data, output_path, template_path=None,
     tracks = midi_data['tracks']
     track_config = track_config or [{} for _ in tracks]
     
+    # Determinar si hay pistas en solo (anula al resto)
+    any_solo = any((c or {}).get('solo') for c in track_config)
+
     # Mapear sample index para cada pista
     track_samples = []
     for i, trk in enumerate(tracks):
         cfg = track_config[i] if i < len(track_config) else {}
-        program = cfg.get('program', 0)
         transp = cfg.get('transpose', 0)
         volume = cfg.get('volume', 100)
-        
-        # Buscar el sample más cercano al programa
+
+        # ¿Esta pista suena? mute la silencia; si hay solo, solo suenan las solo.
+        muted = bool(cfg.get('mute'))
+        active = (not muted) and (cfg.get('solo') if any_solo else True)
+
+        # Selección de sample: 'instrument' ("idx: nombre") o 'program' (entero)
         sample_idx = 0
         if samples_data:
-            # Mapeo directo o por cercanía
-            keys = sorted(samples_data.keys())
-            target = min(keys, key=lambda k: abs(k - program))
-            sample_idx = list(samples_data.keys()).index(target) if samples_data else 0
-        
+            keys = list(samples_data.keys())
+            target_key = _parse_instrument_key(cfg, keys)
+            sample_idx = keys.index(target_key) if target_key in keys else 0
+
         track_samples.append({
             'sample_idx': sample_idx,
             'transpose': transp,
             'volume': volume,
+            'active': bool(active),
         })
     
     # ========================================================
@@ -142,8 +174,11 @@ def build(midi_data, samples_data, output_path, template_path=None,
     # Calcular patrón de notas: hasta 64 filas
     pattern_rows = {}
     for ti, trk in enumerate(tracks[:8]):  # máx 8 canales SNES
-        ts = track_samples[ti] if ti < len(track_samples) else {'sample_idx': 0, 'transpose': 0, 'volume': 64}
-        
+        ts = track_samples[ti] if ti < len(track_samples) else {'sample_idx': 0, 'transpose': 0, 'volume': 64, 'active': True}
+
+        if not ts.get('active', True):  # respeta solo/mute
+            continue
+
         for event in trk['events']:
             if event['type'] == 'note_on' and event['velocity'] > 0:
                 beat = event['abs_ticks'] / tpb

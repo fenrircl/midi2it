@@ -39,7 +39,11 @@ Ejemplos:
             gui_main()
         except ImportError:
             print("Error: No se pudo cargar la GUI. ¿Falta tkinter?")
-            print("Instálalo con: sudo apt install python3-tk")
+            if os.name == 'nt':
+                print("En Windows: reinstala Python desde python.org con la opción 'tcl/tk and IDLE' marcada.")
+            else:
+                print("En Linux: sudo apt install python3-tk")
+                print("En macOS: brew install python-tk")
         return
 
     if not args.midi or not args.sf2:

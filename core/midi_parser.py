@@ -1,10 +1,17 @@
 """
 core/midi_parser.py — Parsea archivos MIDI extrayendo pistas, notas, programas y tempo.
 """
-import mido
+# mido se importa de forma diferida (lazy) para que la GUI pueda arrancar
+# y ofrecer instalarlo aunque aún no esté presente.
 
 def parse(midi_path):
     """Analiza un archivo MIDI y devuelve estructura con pistas y eventos."""
+    try:
+        import mido
+    except ImportError:
+        raise RuntimeError(
+            "Falta la dependencia 'mido'. Instálala desde el menú "
+            "Herramientas → Dependencias, o con: pip install mido")
     midi = mido.MidiFile(midi_path)
     
     tracks = []

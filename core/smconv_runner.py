@@ -2,30 +2,53 @@
 core/smconv_runner.py — Ejecuta smconv de PVSNESlib para convertir IT→soundbank.
 Busca smconv en ubicaciones comunes y permite exportación directa a .bnk.
 """
-import subprocess, os, shutil, struct
+import subprocess, os, shutil, struct, sys
 
-# Ubicaciones comunes de smconv
+IS_WINDOWS = os.name == 'nt'
+# En Windows el ejecutable es smconv.exe
+SMCONV_EXE = 'smconv.exe' if IS_WINDOWS else 'smconv'
+
+# Ubicaciones comunes de smconv (sin extensión; se prueban variantes .exe en Windows)
 SMCONV_LOCATIONS = [
     # Variable de entorno
     lambda: os.path.join(os.environ.get('PVSNESLIB_HOME', ''), 'devkitsnes', 'tools', 'smconv'),
-    # Sistema (PATH)
+    # Sistema (PATH) — shutil.which ya resuelve .exe en Windows
     lambda: shutil.which('smconv') or '',
-    # Rutas comunes de instalación
+    # Rutas comunes de instalación (Unix)
     lambda: os.path.expanduser('~/snesdev/pvsneslib/devkitsnes/tools/smconv'),
     lambda: os.path.expanduser('~/pvsneslib/devkitsnes/tools/smconv'),
     lambda: '/opt/pvsneslib/devkitsnes/tools/smconv',
+    # Rutas comunes de instalación (Windows)
+    lambda: os.path.join(os.environ.get('PVSNESLIB_HOME', r'C:\pvsneslib'),
+                         'devkitsnes', 'tools', 'smconv'),
     # Relativo al proyecto
     lambda: os.path.join(os.path.dirname(__file__), '..', 'bin', 'smconv'),
     lambda: os.path.join(os.path.dirname(__file__), '..', 'tools', 'smconv'),
 ]
 
 
+def _is_exec(path):
+    """Verifica que la ruta sea un ejecutable. os.access(X_OK) no es fiable en Windows."""
+    if not path or not os.path.isfile(path):
+        return False
+    if IS_WINDOWS:
+        return True  # en Windows un .exe presente es suficiente
+    return os.access(path, os.X_OK)
+
+
 def find_smconv():
-    """Busca smconv en ubicaciones comunes."""
+    """Busca smconv en ubicaciones comunes (incluye variante .exe en Windows)."""
     for loc_fn in SMCONV_LOCATIONS:
-        path = loc_fn()
-        if path and os.path.isfile(path) and os.access(path, os.X_OK):
-            return os.path.abspath(path)
+        base = loc_fn()
+        if not base:
+            continue
+        # Probar la ruta tal cual y, en Windows, también con .exe añadido
+        candidates = [base]
+        if IS_WINDOWS and not base.lower().endswith('.exe'):
+            candidates.append(base + '.exe')
+        for path in candidates:
+            if _is_exec(path):
+                return os.path.abspath(path)
     return None
 
 

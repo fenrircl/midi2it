@@ -56,6 +56,10 @@ class MIDI2ITApp(tk.Tk):
         filemenu.add_separator()
         filemenu.add_command(label="Salir", command=self._quit)
 
+        toolsmenu = tk.Menu(menubar, tearoff=0, bg='#16213e', fg='white')
+        menubar.add_cascade(label="Herramientas", menu=toolsmenu)
+        toolsmenu.add_command(label="Dependencias...", command=self._open_deps)
+
         helpmenu = tk.Menu(menubar, tearoff=0, bg='#16213e', fg='white')
         menubar.add_cascade(label="Ayuda", menu=helpmenu)
         helpmenu.add_command(label="Acerca de", command=self._about)
@@ -235,25 +239,70 @@ class MIDI2ITApp(tk.Tk):
             return
 
         try:
-            import subprocess, tempfile
-            tmp_wav = tempfile.mktemp(suffix='.wav')
-            sf2 = self.sf2_path or '/usr/share/sounds/sf2/FluidR3_GM.sf2'
+            import subprocess, tempfile, shutil
 
-            if os.path.exists('/usr/bin/fluidsynth'):
-                subprocess.run(
-                    ['fluidsynth', '-F', tmp_wav, '-i', sf2, self.midi_path],
-                    capture_output=True, timeout=30
-                )
-                if os.path.exists('/usr/bin/ffplay'):
-                    subprocess.Popen(['ffplay', '-nodisp', '-autoexit', tmp_wav],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    self.preview.set_status("🔊 Reproduciendo...")
-                else:
-                    self.preview.set_status(f"✅ Renderizado: {tmp_wav}")
+            # Resolver ejecutables de forma multiplataforma (Windows/Linux/macOS)
+            fluidsynth = shutil.which('fluidsynth')
+            if not fluidsynth:
+                self.preview.set_status("❌ FluidSynth no instalado (no está en PATH)")
+                return
+
+            # SoundFont: el cargado, o uno por defecto del sistema si existe
+            sf2 = self.sf2_path
+            if not sf2:
+                for cand in ('/usr/share/sounds/sf2/FluidR3_GM.sf2',
+                             '/usr/share/soundfonts/default.sf2'):
+                    if os.path.exists(cand):
+                        sf2 = cand
+                        break
+            if not sf2 or not os.path.exists(sf2):
+                self.preview.set_status("❌ Carga un SF2 para previsualizar")
+                return
+
+            # Archivo temporal seguro (mktemp está deprecado)
+            fd, tmp_wav = tempfile.mkstemp(suffix='.wav')
+            os.close(fd)
+
+            subprocess.run(
+                [fluidsynth, '-F', tmp_wav, '-i', sf2, self.midi_path],
+                capture_output=True, timeout=30
+            )
+
+            ffplay = shutil.which('ffplay')
+            if ffplay:
+                subprocess.Popen([ffplay, '-nodisp', '-autoexit', tmp_wav],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.preview.set_status("🔊 Reproduciendo...")
+            elif os.name == 'nt':
+                # Windows: abrir con el reproductor por defecto
+                os.startfile(tmp_wav)  # type: ignore[attr-defined]
+                self.preview.set_status("🔊 Reproduciendo (reproductor del sistema)...")
             else:
-                self.preview.set_status("❌ FluidSynth no instalado")
+                self.preview.set_status(f"✅ Renderizado: {tmp_wav}")
         except Exception as e:
             self.preview.set_status(f"❌ Error: {e}")
+
+    def _open_deps(self):
+        from gui.deps_dialog import DepsDialog
+        DepsDialog(self)
+
+    def _check_deps_on_start(self):
+        """Avisa si faltan dependencias opcionales y ofrece abrir el gestor."""
+        try:
+            from core import deps
+            status = deps.check()
+        except Exception:
+            return
+        missing = [t for t, i in status.items() if not i['ok']]
+        if not missing:
+            return
+        names = ", ".join(missing)
+        if messagebox.askyesno(
+                "Dependencias faltantes",
+                f"Faltan herramientas opcionales: {names}.\n\n"
+                "Sin ellas el preview o la exportación a SNES pueden no funcionar.\n\n"
+                "¿Abrir el gestor de dependencias para instalarlas?"):
+            self._open_deps()
 
     def _about(self):
         messagebox.showinfo("Acerca de midi2it",
@@ -270,6 +319,7 @@ class MIDI2ITApp(tk.Tk):
 
 def main():
     app = MIDI2ITApp()
+    app.after(300, app._check_deps_on_start)
     app.mainloop()
 
 
