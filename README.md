@@ -119,6 +119,9 @@ pip install pyinstaller mido
 pyinstaller --onefile --windowed ^
   --name midi2it ^
   --add-data "templates/bgm.it;templates" ^
+  --collect-submodules core ^
+  --collect-submodules gui ^
+  --hidden-import midi2it_gui ^
   midi2it.py
 ```
 
@@ -142,6 +145,9 @@ pip install pyinstaller mido
 pyinstaller --onefile --windowed \
   --name midi2it \
   --add-data "templates/bgm.it:templates" \
+  --collect-submodules core \
+  --collect-submodules gui \
+  --hidden-import midi2it_gui \
   midi2it.py
 ```
 
