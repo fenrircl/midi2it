@@ -232,14 +232,15 @@ def _smconv_asset_match(name):
     n = name.lower()
     if not n.endswith(('.zip', '.tgz', '.tar.gz')):
         return False
-    if 'source' in n:
+    if 'source' in n or 'debug' in n:
         return False
     # Elegir el build del SO actual (PVSNESlib publica win/linux/darwin)
     if IS_WINDOWS:
-        return 'win' in n
+        # Explicitamente 'windows' completo, evitar que 'darwin' o 'linux' matcheen
+        return 'windows' in n
     if IS_MAC:
-        return any(x in n for x in ('darwin', 'mac', 'osx'))
-    return 'linux' in n
+        return any(x in n for x in ('darwin', 'osx'))
+    return n.endswith('linux.zip') or n.endswith('linux.tgz') or 'linux' in n
 
 
 def has_portable(tool):
