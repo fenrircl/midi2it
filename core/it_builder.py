@@ -1,184 +1,132 @@
 """
 core/it_builder.py — Construye archivos .it compatibles con smconv de PVSNESlib.
-Usa bgm.it como template estructural para mantener compatibilidad.
+Modifica el template bgm.it en su lugar, escribe PCM en espacio libre,
+pero NO actualiza los punteros data_off (smconv escanea el archivo).
 """
 import struct, os, sys
 
-# Ruta al template bgm.it (se configura desde afuera si es necesario)
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '..', 'templates', 'bgm.it')
 
-
 def _bundle_template():
-    """Ruta al template cuando la app está empaquetada con PyInstaller."""
     base = getattr(sys, '_MEIPASS', None)
     return os.path.join(base, 'templates', 'bgm.it') if base else None
 
-
 def find_template(path=None):
-    """Busca el template bgm.it en varias ubicaciones."""
-    paths = [
-        path,
-        _bundle_template(),                       # PyInstaller (.exe onefile)
-        TEMPLATE_PATH,
-        '/tmp/vs-snes/mvp/res/bgm.it',
-        os.path.expanduser('~/.midi2it/templates/bgm.it'),
-    ]
+    paths = [path, _bundle_template(), TEMPLATE_PATH,
+             '/tmp/vs-snes/mvp/res/bgm.it',
+             os.path.expanduser('~/.midi2it/templates/bgm.it')]
     for p in paths:
         if p and os.path.exists(p):
             return p
-    raise FileNotFoundError(
-        "No se encontró bgm.it template. "
-        "Descárgalo o cópialo desde un proyecto PVSNESlib existente."
-    )
-
-
-def _parse_instrument_key(cfg, keys):
-    """Resuelve la clave de sample a usar para una pista.
-
-    Acepta cfg['instrument'] con formato "<idx>: nombre" (lo que envía la GUI)
-    o cfg['program'] entero. Cae al sample más cercano por número de programa.
-    """
-    if not keys:
-        return 0
-    instr = cfg.get('instrument')
-    if isinstance(instr, str) and ':' in instr:
-        head = instr.split(':', 1)[0].strip()
-        if head.isdigit():
-            k = int(head)
-            return k if k in keys else min(keys, key=lambda x: abs(x - k))
-    program = cfg.get('program', 0) or 0
-    return min(keys, key=lambda k: abs(k - program))
+    raise FileNotFoundError("No se encontró bgm.it template.")
 
 
 def build(midi_data, samples_data, output_path, template_path=None,
-          track_config=None, tempo_override=None):
-    """Construye un archivo .it a partir de datos MIDI + samples.
-    
-    Args:
-        midi_data: dict de parse_midi()
-        samples_data: dict de sf2_parser.parse()
-        output_path: ruta del .it de salida
-        template_path: ruta al bgm.it template
-        track_config: list[dict] con configuración por pista (instrumento, transposición, etc.)
-        tempo_override: float, tempo forzado (BPM)
-    """
+          track_config=None, tempo_override=None, max_sample_sec=3.0,
+          max_total_pcm_kb=96):
     tp = find_template(template_path)
     bgm = open(tp, 'rb').read()
-    
+    it = bytearray(bgm)
+
     tpb = midi_data['ticks_per_beat']
     tempo = tempo_override or midi_data['tempo']
-    
-    # Preparar configuración de pistas
     tracks = midi_data['tracks']
-    track_config = track_config or [{} for _ in tracks]
-    
-    # Determinar si hay pistas en solo (anula al resto)
-    any_solo = any((c or {}).get('solo') for c in track_config)
 
-    # Mapear sample index para cada pista
-    track_samples = []
-    for i, trk in enumerate(tracks):
-        cfg = track_config[i] if i < len(track_config) else {}
-        transp = cfg.get('transpose', 0)
-        volume = cfg.get('volume', 100)
+    # Leer tablas de offset del template
+    smp_num  = struct.unpack('<H', bgm[36:38])[0]  # 11
+    pat_num  = struct.unpack('<H', bgm[38:40])[0]  # 12
+    off_smpls = 192 + 13 + 1 * 4  # orders(13) + ins ptr(4)
+    off_pats  = off_smpls + smp_num * 4
+    samp_hdr_offsets = list(struct.unpack(f'<{smp_num}I', bgm[off_smpls:off_smpls+smp_num*4]))
+    pat_ptrs = list(struct.unpack(f'<{pat_num}I', bgm[off_pats:off_pats+pat_num*4]))
+    last_pat_end = max(p + struct.unpack('<H', bgm[p:p+2])[0] for p in pat_ptrs)
 
-        # ¿Esta pista suena? mute la silencia; si hay solo, solo suenan las solo.
-        muted = bool(cfg.get('mute'))
-        active = (not muted) and (cfg.get('solo') if any_solo else True)
-
-        # Selección de sample: 'instrument' ("idx: nombre") o 'program' (entero)
-        sample_idx = 0
-        if samples_data:
-            keys = list(samples_data.keys())
-            target_key = _parse_instrument_key(cfg, keys)
-            sample_idx = keys.index(target_key) if target_key in keys else 0
-
-        track_samples.append({
-            'sample_idx': sample_idx,
-            'transpose': transp,
-            'volume': volume,
-            'active': bool(active),
-        })
-    
-    # ========================================================
-    # CONSTRUIR IT: usar bgm.it como template
-    # ========================================================
-    new_it = bytearray(bgm)
-    
-    # 1. Simplificar órdenes (solo patrón 0, luego stop)
+    # ─── 1. Orders ───
+    it[192] = 0  # orden 0 = patrón 0
     for i in range(193, 205):
-        new_it[i] = 0xFF
-    new_it[192] = 0  # orden 0 = patrón 0
-    
-    # 2. Reemplazar sample 0 con los datos del primer sample disponible
-    s0 = 981  # sample 0 header
-    pcm_data = b'\x00\x02'  # silencio por defecto
-    sample_rate = 16000
-    
-    if samples_data:
-        first_key = list(samples_data.keys())[0]
-        first = samples_data[first_key]
-        # Convertir sample a 16-bit si es necesario
-        pcm_data = first['data']
-        sample_rate = first['rate']
-    
-    smp_len = len(pcm_data) // 2
-    new_it[s0+16:s0+18] = struct.pack('<H', 0x8012)
-    new_it[s0+18] = 64
-    new_it[s0+20:s0+46] = f"Sample {0}".ljust(26)[:26].encode()
-    new_it[s0+48:s0+50] = struct.pack('<H', sample_rate)
-    new_it[s0+50] = 64
-    new_it[s0+54:s0+58] = struct.pack('<I', smp_len)
-    new_it[s0+58:s0+62] = struct.pack('<I', 0)
-    new_it[s0+62:s0+66] = struct.pack('<I', smp_len)
-    new_it[s0+70:s0+80] = b'001MainSamp'
-    
-    # Puntero de datos al final del archivo
-    data_ptr = len(new_it)
-    new_it[s0+78:s0+82] = struct.pack('<I', data_ptr)
-    new_it.extend(pcm_data)
-    
-    # 3. Múltiples samples: sample 1+ para tracks adicionales
-    sample_offsets = []
-    sample_offsets.append(data_ptr)
-    for si, (sk, sv) in enumerate(list(samples_data.items())[1:], start=1):
-        if si >= 9:  # máximo samples para no saturar
-            break
-        soff = 981 + si * 80
+        it[i] = 0xFF  # stop
+
+    # ─── 2. Tempo ───
+    it[51] = int(tempo * 2) if tempo < 128 else 240
+
+    # ─── 3. Preparar samples ───
+    sample_list = list(samples_data.items()) if samples_data else []
+    max_data = len(bgm) - last_pat_end  # ~33KB
+    used = 0
+    snes_samples = []
+
+    for sk, sv in sample_list:
         sd = sv['data']
         sr = sv['rate']
-        sl = len(sd) // 2
-        new_it[soff+16:soff+18] = struct.pack('<H', 0x8012)
-        new_it[soff+18] = 64
-        new_it[soff+20:soff+46] = sv['name'][:26].ljust(26).encode()
-        new_it[soff+48:soff+50] = struct.pack('<H', sr)
-        new_it[soff+50] = 64
-        new_it[soff+54:soff+58] = struct.pack('<I', sl)
-        new_it[soff+58:soff+62] = struct.pack('<I', 0)
-        new_it[soff+62:soff+66] = struct.pack('<I', sl)
-        new_it[soff+70:soff+80] = f"{si:03d}Sample".encode()
-        sp = len(new_it)
-        new_it[soff+78:soff+82] = struct.pack('<I', sp)
-        new_it.extend(sd)
-        sample_offsets.append(sp)
-    
-    # 4. Actualizar note map del instrumento para mapear notas a samples
+        max_frames = int(sr * max_sample_sec)
+        if len(sd) // 2 > max_frames:
+            sd = sd[:max_frames * 2]
+        if used + len(sd) > max_data:
+            allowed = max_data - used
+            if allowed >= 256:
+                sd = sd[:allowed]
+            else:
+                continue
+        used += len(sd)
+        snes_samples.append((sv['name'].encode('ascii', errors='replace'), sr, sd))
+
+    if not snes_samples:
+        snes_samples.append((b'Silence', 16000, b'\x00\x02'))
+
+    max_smp = min(len(snes_samples), smp_num)
+    actual = snes_samples[:max_smp]
+
+    print(f"   Samples: {len(actual)}/{smp_num}, PCM: {sum(len(s[2]) for s in actual)/1024:.1f}/{max_data/1024:.1f} KB")
+
+    # ─── 4. Sample headers (flags + IMPS, pero NO tocamos data_off original) ───
+    for si in range(smp_num):
+        soff = samp_hdr_offsets[si]
+        if si < len(actual):
+            name, rate, sd = actual[si]
+            sl = len(sd) // 2
+            it[soff+16:soff+18] = struct.pack('<H', 0xE000)  # present + data + 16bit
+            it[soff+18] = 64
+            it[soff+20:soff+46] = (name + b' SNES').ljust(26, b'\x00')[:26]
+            it[soff+48:soff+50] = struct.pack('<H', rate)
+            it[soff+50] = 64
+            it[soff+52] = 32
+            it[soff+54:soff+58] = struct.pack('<I', sl)
+            it[soff+58:soff+62] = struct.pack('<I', 0)
+            it[soff+62:soff+66] = struct.pack('<I', sl)
+        else:
+            it[soff+16:soff+18] = struct.pack('<H', 0x0000)
+            it[soff+18] = 0
+            it[soff+20:soff+46] = b'Empty\0'.ljust(26, b'\x00')
+            it[soff+48:soff+50] = struct.pack('<H', 8000)
+            it[soff+54:soff+58] = struct.pack('<I', 1)
+            it[soff+62:soff+66] = struct.pack('<I', 1)
+        # IMPS siempre presente
+        it[soff+66:soff+70] = b'IMPS'
+        it[soff+70:soff+80] = f"S{si:03d}SMP\0\0\0\0\0".encode()[:10]
+        # NO tocamos data_off (soff+78:soff+82) — smconv escanea
+
+    # ─── 5. Escribir PCM en espacio libre ───
+    data_ptr = last_pat_end
+    for name, rate, sd in actual:
+        end_needed = data_ptr + len(sd)
+        if end_needed > len(it):
+            it.extend(b'\x00' * (end_needed - len(it)))
+        it[data_ptr:data_ptr+len(sd)] = sd
+        data_ptr += len(sd)
+
+    # ─── 6. Note map ───
     bi = bgm.find(b'IMPI')
-    note_map_start = bi + 47
     for i in range(120):
-        # Determinar qué sample usar para cada nota
-        # Simplificación: sample 0 para todas las notas
-        new_it[note_map_start + i] = 0
-    
-    # 5. Construir patrón con notas del MIDI
-    # Calcular patrón de notas: hasta 64 filas
+        it[bi+47+i] = 0
+
+    # ─── 7. Patrón 0 con notas MIDI ───
+    pat0_off = pat_ptrs[0]
+    cn = bytearray()
+    for ch in range(6):
+        cn.extend(f"ch{ch}\0".encode().ljust(8, b'\x00'))
+
     pattern_rows = {}
-    for ti, trk in enumerate(tracks[:8]):  # máx 8 canales SNES
-        ts = track_samples[ti] if ti < len(track_samples) else {'sample_idx': 0, 'transpose': 0, 'volume': 64, 'active': True}
-
-        if not ts.get('active', True):  # respeta solo/mute
-            continue
-
+    for ti, trk in enumerate(tracks[:6]):
         for event in trk['events']:
             if event['type'] == 'note_on' and event['velocity'] > 0:
                 beat = event['abs_ticks'] / tpb
@@ -186,64 +134,34 @@ def build(midi_data, samples_data, output_path, template_path=None,
                 if row < 64:
                     if row not in pattern_rows:
                         pattern_rows[row] = []
-                    it_note = event['note'] + 1 + ts.get('transpose', 0)
-                    it_note = max(1, min(it_note, 120))
-                    vol = min(64, int(ts.get('volume', 100) * 64 / 100))
+                    it_note = event['note'] + 1
                     pattern_rows[row].append({
-                        'channel': ts['sample_idx'],
-                        'note': it_note,
+                        'channel': ti % 6,
+                        'note': max(1, min(it_note, 120)),
                         'instrument': 1,
-                        'volume': vol,
+                        'volume': 64,
                     })
-    
-    # 6. Reemplazar pattern 0
-    # Encontrar dónde empieza el patrón 0 en bgm.it
-    pat_start = None
-    for off in range(len(bgm)):
-        if bgm[off+2] == 64 and bgm[off+3] == 0:
-            dlen = struct.unpack('<H', bgm[off:off+2])[0]
-            if 10 < dlen < 5000:
-                pat_start = off
-                break
-    
-    if pat_start and pat_start < len(new_it):
-        # Construir channel names (8 canales)
-        cn = bytearray()
-        for ch in range(8):
-            for c in f"ch{ch}\x00".ljust(8, '\x00'):
-                cn.append(ord(c))
-        
-        # Construir packed data
-        pk = bytearray()
-        for row in range(64):
-            row_events = pattern_rows.get(row, [])
-            if row_events:
-                pk.append(len(row_events))
-                for re in row_events:
-                    pk.append(re['channel'])
-                    pk.append(0x07)  # mask: note + inst + vol
-                    pk.append(re['note'])
-                    pk.append(re['instrument'])
-                    pk.append(re['volume'])
-            else:
-                pk.append(0)
-        
-        # Reemplazar patrón
-        pl = 4 + len(cn) + len(pk)
-        new_pat = bytearray(struct.pack('<HBB', pl, 64, 0))
-        new_pat.extend(cn)
-        new_pat.extend(pk)
-        
-        # Reemplazar en el archivo
-        for i in range(len(new_pat)):
-            if pat_start + i < len(new_it):
-                new_it[pat_start + i] = new_pat[i]
-    
-    # 7. Actualizar tempo en header
-    new_it[51] = int(tempo * 2) if tempo < 128 else 240
-    
-    # Escribir
+
+    pk = bytearray()
+    for row in range(64):
+        events = pattern_rows.get(row, [])
+        if events:
+            pk.append(len(events))
+            for re in events:
+                pk.extend([re['channel'], 0x07, re['note'], re['instrument'], re['volume']])
+        else:
+            pk.append(0)
+
+    pl = 4 + len(cn) + len(pk)
+    new_pat = bytearray(struct.pack('<HBB', pl, 64, 0))
+    new_pat.extend(cn)
+    new_pat.extend(pk)
+    for i in range(len(new_pat)):
+        if pat0_off + i < len(it):
+            it[pat0_off + i] = new_pat[i]
+
+    # ─── Escribir ───
     with open(output_path, 'wb') as f:
-        f.write(new_it)
-    
+        f.write(it)
+    print(f"✅ IT: {output_path} ({len(it)} bytes, {len(actual)} samples)")
     return output_path

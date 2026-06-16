@@ -29,6 +29,9 @@ Ejemplos:
     parser.add_argument('--tempo', type=float, default=0, help='Tempo forzado (BPM)')
     parser.add_argument('-g', '--gui', action='store_true', help='Abrir interfaz gráfica')
     parser.add_argument('-v', '--verbose', action='store_true', help='Mostrar información detallada')
+    parser.add_argument('--snes', action='store_true', help='Optimizar para SNES: truncar samples a ~3s máx, presupuesto 96KB')
+    parser.add_argument('--max-sample-sec', type=float, default=3.0, help='Duración máxima por sample en segundos (default: 3.0)')
+    parser.add_argument('--max-pcm-kb', type=float, default=96, help='Presupuesto total PCM en KB (default: 96)')
 
     args = parser.parse_args()
 
@@ -68,11 +71,17 @@ Ejemplos:
 
     # 3. Build IT
     print(f"\n🔧 Generando IT...")
+    snes_kwargs = {}
+    if args.snes:
+        snes_kwargs['max_sample_sec'] = args.max_sample_sec
+        snes_kwargs['max_total_pcm_kb'] = args.max_pcm_kb
+        print(f"   🎮 Modo SNES: max {args.max_sample_sec}s por sample, {args.max_pcm_kb}KB total PCM")
     it_builder.build(
         midi_data=midi,
         samples_data=samples,
         output_path=args.output,
         tempo_override=args.tempo or None,
+        **snes_kwargs,
     )
 
     size_kb = os.path.getsize(args.output) / 1024
