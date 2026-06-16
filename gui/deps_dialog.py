@@ -130,29 +130,39 @@ class DepsDialog(tk.Toplevel):
         self._log(f"\n=== Instalando {tool} ===")
 
         def worker():
-            ok = False
+            status = 'fail'
             for label, cmd in plan:
                 self._log(f"$ {' '.join(cmd)}")
-                rc = deps.run_install(cmd, on_line=lambda l: self.after(0, self._log, l))
-                if rc == 0:
-                    ok = True
+                rc, out = deps.run_install(cmd, on_line=lambda l: self.after(0, self._log, l))
+                status = deps.classify_result(rc, out)
+                if status in ('ok', 'already'):
                     break
                 self._log(f"[{label}] falló (código {rc}), probando alternativa...")
-            self.after(0, self._finish_install, tool, ok)
+            self.after(0, self._finish_install, tool, status)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _finish_install(self, tool, ok):
+    def _finish_install(self, tool, status):
         self._busy = False
-        if ok:
+        if status == 'ok':
             self._log(f"✅ {tool} instalado.")
-            if tool == 'mido':
-                messagebox.showinfo(
-                    "Reinicio necesario",
-                    "mido se instaló. Reinicia midi2it para usarlo.")
+            self._restart_hint(tool)
+        elif status == 'already':
+            self._log(f"ℹ️ {tool} ya estaba instalado.")
+            self._restart_hint(tool, already=True)
         else:
             self._log(f"❌ No se pudo instalar {tool} automáticamente.")
             messagebox.showwarning(
                 "Instalación fallida",
                 f"No se pudo instalar {tool}.\n\n{deps.manual_hint(tool)}")
         self._refresh()
+
+    def _restart_hint(self, tool, already=False):
+        """Avisa que hace falta reiniciar para detectar la herramienta (PATH/pip)."""
+        pre = f"{tool} ya estaba instalado." if already else f"{tool} se instaló."
+        if tool == 'mido':
+            extra = "Reinicia midi2it para usarlo."
+        else:
+            extra = ("Si la app no lo detecta aún, cierra y vuelve a abrir midi2it "
+                     "(el PATH se actualiza al reiniciar).")
+        messagebox.showinfo("Reinicio recomendado", f"{pre}\n\n{extra}")
