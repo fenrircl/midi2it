@@ -118,6 +118,7 @@ pip install pyinstaller mido
 #    El separador de --add-data en Windows es ';'  (en Linux/macOS es ':')
 pyinstaller --onefile --windowed ^
   --name midi2it ^
+  --paths . ^
   --add-data "templates/bgm.it;templates" ^
   --collect-submodules core ^
   --collect-submodules gui ^
@@ -144,6 +145,7 @@ Mismo comando, cambiando el separador de `--add-data` a `:` y el `^` por `\`:
 pip install pyinstaller mido
 pyinstaller --onefile --windowed \
   --name midi2it \
+  --paths . \
   --add-data "templates/bgm.it:templates" \
   --collect-submodules core \
   --collect-submodules gui \

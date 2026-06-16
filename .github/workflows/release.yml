@@ -27,6 +27,7 @@ jobs:
         run: >
           pyinstaller --onefile --windowed
           --name midi2it
+          --paths .
           --add-data "templates/bgm.it;templates"
           --collect-submodules core
           --collect-submodules gui
