@@ -1,0 +1,5 @@
+mido>=1.2.0
+# Opcionales (no requeridos para funcionalidad básica):
+# fluidsynth — para preview de audio
+# openmpt123 — para validación de .it
+# pvsneslib (smconv) — para conversión a .bnk

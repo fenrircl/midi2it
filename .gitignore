@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Build
+*.o
+*.obj
+*.bnk
+*.asm
+*.def
+*.sym
+*.sfc
+
+# Temp
+tmp/
+*.wav
+*.brr
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Templates (tracked separately)
+templates/bgm.it
