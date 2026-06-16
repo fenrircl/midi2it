@@ -24,7 +24,22 @@ SMCONV_LOCATIONS = [
     # Relativo al proyecto
     lambda: os.path.join(os.path.dirname(__file__), '..', 'bin', 'smconv'),
     lambda: os.path.join(os.path.dirname(__file__), '..', 'tools', 'smconv'),
+    # Descarga portátil (~/.midi2it/tools/smconv/**) — ver core/deps.py
+    lambda: _portable_smconv(),
 ]
+
+
+def _portable_smconv():
+    """Busca smconv descargado de forma portátil bajo ~/.midi2it/tools/."""
+    base = os.path.join(os.path.expanduser('~'), '.midi2it', 'tools')
+    target = SMCONV_EXE.lower()
+    if not os.path.isdir(base):
+        return ''
+    for root, _dirs, files in os.walk(base):
+        for f in files:
+            if f.lower() == target:
+                return os.path.join(root, f)
+    return ''
 
 
 def _is_exec(path):

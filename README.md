@@ -29,16 +29,22 @@ Dependencias opcionales:
 ### Instalar dependencias desde la GUI
 
 La interfaz incluye un gestor de dependencias: **Herramientas → Dependencias…**.
-Detecta qué falta y lo instala desde la propia app:
+Detecta qué falta y lo resuelve desde la propia app.
 
-- **mido** → `pip` (siempre disponible)
-- **ffmpeg** → `winget` (`Gyan.FFmpeg`) / `choco` / `scoop` (Windows), `brew` (macOS), `apt` (Linux)
-- **fluidsynth** → `choco` / `scoop` (Windows; **no** está en winget), `brew` (macOS),
-  `apt` (Linux). Sin choco/scoop el gestor ofrece el enlace de descarga manual.
-- **smconv** → enlace de descarga de PVSNESlib (instalación manual)
+**Descarga portátil (recomendado, botón "Descargar (portátil)"):** baja el binario
+oficial, lo descomprime en `~/.midi2it/tools/` y lo usa por **ruta absoluta**. No
+instala nada en el sistema, **no toca el PATH** y **no requiere reiniciar**:
 
-> Tras instalar una herramienta nativa, **reinicia midi2it** para que la detecte
-> (el PATH se actualiza al abrir un proceso nuevo).
+- **ffmpeg** → build de [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) (incluye `ffplay`)
+- **fluidsynth** → release oficial `win10-x64` de GitHub
+- **smconv** → release de PVSNESlib del SO actual (win/linux/darwin)
+
+**Alternativas (botón "Instalar (gestor)"):**
+- **mido** → `pip` (requiere reiniciar la app)
+- **ffmpeg / fluidsynth** → `winget` / `choco` / `scoop` (Windows), `brew` (macOS), `apt` (Linux)
+
+midi2it busca cada herramienta primero en `~/.midi2it/tools/` (portátil) y luego en
+el PATH del sistema. Al arrancar avisa si falta algo y ofrece abrir el gestor.
 
 Al arrancar, la GUI avisa si falta algo y ofrece abrir este gestor.
 
@@ -47,8 +53,9 @@ Al arrancar, la GUI avisa si falta algo y ofrece abrir este gestor.
 1. Instala Python desde [python.org](https://www.python.org/downloads/) marcando
    **"tcl/tk and IDLE"** (tkinter) y **"Add python.exe to PATH"**.
 2. `pip install mido`
-3. `python midi2it.py` (abre la GUI). Usa **Herramientas → Dependencias…** para
-   instalar fluidsynth/ffmpeg con `winget`.
+3. `python midi2it.py` (abre la GUI). Usa **Herramientas → Dependencias…** y el
+   botón **"Descargar (portátil)"** para obtener fluidsynth/ffmpeg/smconv sin
+   instalar nada en el sistema.
 
 ## 🚀 Uso
 

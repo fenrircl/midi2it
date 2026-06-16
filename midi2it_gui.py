@@ -240,12 +240,13 @@ class MIDI2ITApp(tk.Tk):
             return
 
         try:
-            import subprocess, tempfile, shutil
+            import subprocess, tempfile
+            from core import deps
 
-            # Resolver ejecutables de forma multiplataforma (Windows/Linux/macOS)
-            fluidsynth = shutil.which('fluidsynth')
+            # Resolver ejecutables: portátil (ruta absoluta) primero, luego PATH
+            fluidsynth = deps.executable('fluidsynth')
             if not fluidsynth:
-                self.preview.set_status("❌ FluidSynth no instalado (no está en PATH)")
+                self.preview.set_status("❌ FluidSynth no disponible (Herramientas → Dependencias)")
                 return
 
             # SoundFont: el cargado, o uno por defecto del sistema si existe
@@ -269,7 +270,7 @@ class MIDI2ITApp(tk.Tk):
                 capture_output=True, timeout=30
             )
 
-            ffplay = shutil.which('ffplay')
+            ffplay = deps.executable('ffplay')
             if ffplay:
                 subprocess.Popen([ffplay, '-nodisp', '-autoexit', tmp_wav],
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

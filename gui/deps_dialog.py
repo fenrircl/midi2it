@@ -88,6 +88,11 @@ class DepsDialog(tk.Toplevel):
                          font=('Helvetica', 8)).pack(side=tk.RIGHT, padx=6)
                 continue
 
+            # Preferir descarga portátil (sin instalar nada ni tocar el PATH)
+            if deps.has_portable(tool):
+                ttk.Button(row, text="Descargar (portátil)",
+                           command=lambda t=tool: self._portable(t)).pack(side=tk.RIGHT, padx=6)
+
             if info['kind'] == 'manual':
                 ttk.Button(row, text="Instrucciones",
                            command=lambda t=tool: self._show_manual(t)).pack(side=tk.RIGHT, padx=6)
@@ -96,7 +101,7 @@ class DepsDialog(tk.Toplevel):
                 if plan:
                     ttk.Button(row, text=f"Instalar ({plan[0][0]})",
                                command=lambda t=tool: self._install(t)).pack(side=tk.RIGHT, padx=6)
-                else:
+                elif not deps.has_portable(tool):
                     ttk.Button(row, text="Cómo instalar",
                                command=lambda t=tool: self._show_manual(t)).pack(side=tk.RIGHT, padx=6)
 
@@ -166,3 +171,34 @@ class DepsDialog(tk.Toplevel):
             extra = ("Si la app no lo detecta aún, cierra y vuelve a abrir midi2it "
                      "(el PATH se actualiza al reiniciar).")
         messagebox.showinfo("Reinicio recomendado", f"{pre}\n\n{extra}")
+
+    # ─── Descarga portátil (sin instalar, sin tocar el PATH) ─────────────────
+
+    def _portable(self, tool):
+        if self._busy:
+            messagebox.showwarning("Ocupado", "Ya hay una descarga en curso.")
+            return
+        self._busy = True
+        self._log(f"\n=== Descargando {tool} (portátil) ===")
+
+        def worker():
+            status, path = deps.portable_install(
+                tool, on_line=lambda l: self.after(0, self._log, l))
+            self.after(0, self._finish_portable, tool, status)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_portable(self, tool, status):
+        self._busy = False
+        if status == 'ok':
+            self._log(f"✅ {tool} descargado y listo (portátil).")
+            messagebox.showinfo(
+                "Listo",
+                f"{tool} quedó listo para usar (sin reiniciar).\n\n"
+                f"Ubicación: {deps.tools_dir()}")
+        else:
+            self._log(f"❌ No se pudo descargar {tool}.")
+            messagebox.showwarning(
+                "Descarga fallida",
+                f"No se pudo obtener {tool} de forma portátil.\n\n{deps.manual_hint(tool)}")
+        self._refresh()
