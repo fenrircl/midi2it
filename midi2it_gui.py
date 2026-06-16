@@ -72,9 +72,10 @@ class MIDI2ITApp(tk.Tk):
     # ─── LAYOUT ──────────────────────────────────────────────────────────────
 
     def _build_layout(self):
-        # Panel izquierdo: pistas
-        self.track_panel = TrackPanel(self, on_update=self._on_tracks_update)
-        self.track_panel.pack(side=tk.LEFT, fill=tk.Y, width=220)
+        # Panel izquierdo: pistas (width fija; pack() no acepta 'width')
+        self.track_panel = TrackPanel(self, on_update=self._on_tracks_update, width=220)
+        self.track_panel.pack_propagate(False)
+        self.track_panel.pack(side=tk.LEFT, fill=tk.Y)
 
         # Panel central: piano roll
         center = tk.Frame(self, bg='#1a1a2e')

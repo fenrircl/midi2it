@@ -170,6 +170,26 @@ El `.exe` queda en la pestaña **Releases** del repo. También puede lanzarse a 
 desde **Actions → Build Windows EXE & Release** (botón *Run workflow*); en ese caso
 sube el `.exe` como *artifact* sin crear release.
 
+El release publica **dos** descargas:
+- `midi2it.exe` — ejecutable único (cómodo).
+- `midi2it-windows-folder.zip` — versión en carpeta (menos falsos positivos).
+
+### ⚠️ Falso positivo de antivirus (Wacatac.B!ml)
+
+Windows Defender u otros antivirus pueden marcar el `.exe` como
+`Trojan:Win32/Wacatac.B!ml`. Es un **falso positivo** heurístico (`!ml` = modelo
+de machine-learning) muy común en ejecutables PyInstaller `--onefile`: el
+bootloader se auto-extrae en disco y eso dispara la detección. El código es
+abierto, sin acceso a red ni payload.
+
+Soluciones:
+- Usa `midi2it-windows-folder.zip` (build `--onedir`): mucho menos detectado.
+- Restaura el archivo: *Seguridad de Windows → Protección contra virus →
+  Historial de protección → Permitir en el dispositivo*.
+- Reporta el falso positivo a Microsoft:
+  [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/en-us/wdsi/filesubmission).
+- Solución definitiva: firmar el `.exe` con un certificado de *code signing*.
+
 ## 📝 Licencia
 
 MIT
