@@ -3,30 +3,58 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+*.spec
+.venv/
+venv/
 
 # Build
 *.o
 *.obj
-
-# PyInstaller (.exe)
 build/
 dist/
-*.spec
+
+# PyInstaller (.exe)
+*.exe
+
+# Audio / output
+*.wav
+*.brr
+*.mp3
+*.ogg
+*.flac
+
+# SoundFont (large binaries)
+*.sf2
+*.sf3
+*.dls
+
+# SNES build artifacts
 *.bnk
 *.asm
 *.def
 *.sym
 *.sfc
 
-# Temp
-tmp/
-*.wav
-*.brr
+# Test artifacts (banks temporales generados por tests)
+test_*_bank.h
+test_*_bank.asm
+test_*_bank.bnk
+test_*.it
+forest_*.it
+forest_*.wav
+
+# Editor / OS
 *.swp
 *.swo
 *~
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
 
-# Templates (tracked separately)
+# User config
+~/.midi2it/
+config.ini
+
+# Templates (tracked separately, regenerated)
 templates/bgm.it
