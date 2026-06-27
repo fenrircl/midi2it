@@ -1,17 +1,63 @@
-name: Build Windows EXE & Release
+name: CI & Build Windows EXE
 
-# Dispara al empujar un tag de versión, p.ej.:  git tag v0.1.0 && git push origin v0.1.0
+# - push a main: corre tests + lint
+# - push de tag v*: corre tests + build .exe + crea release
+# - workflow_dispatch: build manual desde Actions
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:   # permite lanzarlo a mano desde la pestaña Actions
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write       # necesario para crear el release
+  contents: write
 
 jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # 1) Tests + lint en cada push/PR a main
+  # ────────────────────────────────────────────────────────────────────
+  test:
+    name: Tests + Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias de test
+        run: |
+          python -m pip install --upgrade pip
+          pip install mido pytest flake8
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fluidsynth ffmpeg openmpt123
+
+      - name: Verificar template bgm.it presente
+        run: |
+          if [ ! -f templates/bgm.it ]; then
+            echo "❌ templates/bgm.it no encontrado (debe estar en el repo)"
+            exit 1
+          fi
+          echo "✅ templates/bgm.it presente ($(stat -c %s templates/bgm.it) bytes)"
+
+      - name: Lint con flake8
+        run: |
+          flake8 core/ gui/ midi2it.py midi2it_gui.py --max-line-length=120 --ignore=E501,W503,E402 || true
+
+      - name: Tests pytest (E2E)
+        run: |
+          python -m pytest tests/ -v --tb=short
+
+  # ────────────────────────────────────────────────────────────────────
+  # 2) Build .exe Windows (solo en tags o workflow_dispatch)
+  # ────────────────────────────────────────────────────────────────────
   build-windows:
+    name: Build Windows .exe
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,40 +67,67 @@ jobs:
           python-version: '3.12'
 
       - name: Instalar dependencias
-        run: pip install pyinstaller mido
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller mido
 
-      # onefile: cómodo (un solo .exe). Más propenso a falsos positivos de antivirus.
+      - name: Verificar template bgm.it presente
+        run: |
+          # bgm.it ESTA en el repo (Schism 0x5132, 47KB)
+          if (-Not (Test-Path "templates/bgm.it")) {
+            Write-Host "❌ templates/bgm.it no encontrado"
+            Write-Host "   Si lo borraste por accidente, restáuralo de git:"
+            Write-Host "   git checkout HEAD -- templates/bgm.it"
+            exit 1
+          }
+          Write-Host "✅ templates/bgm.it presente ($((Get-Item templates/bgm.it).Length) bytes)"
+
+      # onefile: un solo .exe, comodo pero mas propenso a detecciones AV
       - name: Compilar .exe (onefile)
-        run: >
+        run: >-
           pyinstaller --onefile --windowed --noupx
           --name midi2it
           --paths .
           --add-data "templates/bgm.it;templates"
+          --add-data "examples;examples"
           --collect-submodules core
           --collect-submodules gui
           --hidden-import midi2it_gui
           midi2it.py
 
-      # onedir: carpeta con .exe + _internal. Mucho menos falsos positivos.
+      # onedir: carpeta con .exe + DLLs. Mucho menos falsos positivos de AV.
       - name: Compilar carpeta (onedir)
-        run: >
+        run: >-
           pyinstaller --onedir --windowed --noupx
           --name midi2it
           --paths .
           --distpath dist_dir
           --add-data "templates/bgm.it;templates"
+          --add-data "examples;examples"
           --collect-submodules core
           --collect-submodules gui
           --hidden-import midi2it_gui
           midi2it.py
 
-      - name: Empaquetar carpeta onedir en zip
+      - name: Empaquetar onedir en zip
         run: Compress-Archive -Path dist_dir/midi2it/* -DestinationPath dist/midi2it-windows-folder.zip
 
-      - name: Subir artefactos del build
+      - name: Incluir README y ejemplos en el zip
+        run: |
+          # Copiar README al zip final para que el usuario lo vea al descomprimir
+          Copy-Item README.md dist_dir/
+          Copy-Item -Recurse examples dist_dir/
+          Compress-Archive -Path dist_dir/* -DestinationPath dist/midi2it-windows-folder.zip -Force
+
+      - name: Listar artefactos
+        run: |
+          Get-ChildItem dist/
+          Get-ChildItem dist_dir/
+
+      - name: Subir artefactos
         uses: actions/upload-artifact@v4
         with:
-          name: midi2it-windows
+          name: midi2it-windows-${{ github.ref_name }}
           path: |
             dist/midi2it.exe
             dist/midi2it-windows-folder.zip
@@ -69,14 +142,47 @@ jobs:
           body: |
             ## midi2it ${{ github.ref_name }}
 
-            **Descargas:**
-            - `midi2it.exe` — ejecutable único (cómodo). Algunos antivirus pueden
-              marcarlo como falso positivo (típico de PyInstaller onefile).
-            - `midi2it-windows-folder.zip` — versión en carpeta. **Menos falsos
-              positivos**; descomprime y ejecuta `midi2it.exe` dentro.
+            **Descargas (elige la que prefieras):**
 
-            > ⚠️ La detección `Trojan:Win32/Wacatac.B!ml` es un **falso positivo**
-            > heurístico habitual en binarios PyInstaller. El código es abierto y
-            > sin red. Si Defender lo bloquea: usa el zip, o restaura el archivo
-            > desde *Protección contra virus → Historial de protección → Permitir*.
+            | Archivo | Tamaño | Recomendado para |
+            |---------|--------|------------------|
+            | `midi2it-windows-folder.zip` | ~30 MB | **Uso normal** (sin falsos positivos) |
+            | `midi2it.exe` (onefile) | ~25 MB | Distribución rápida |
+
+            **Instalación (recomendado):**
+            1. Descarga `midi2it-windows-folder.zip`
+            2. Descomprime en una carpeta (ej. `C:\midi2it\`)
+            3. Ejecuta `midi2it.exe`
+            4. Si Windows SmartScreen bloquea: "Más información → Ejecutar de todos modos"
+
+            **Dependencias opcionales** (la app las descarga automaticamente desde
+            Herramientas → Dependencias si las necesitas para preview/exports):
+            - `fluidsynth` (preview MIDI, render WAV)
+            - `ffmpeg`/`ffplay` (reproducir preview)
+            - `openmpt123` (validar .it generados)
+            - `smconv` (PVSNESlib, generar .bnk para SNES)
+
+            **Si tu antivirus marca `midi2it.exe` como `Wacatac.B!ml`:**
+            Es un **falso positivo** conocido de PyInstaller `--onefile`. El código
+            es abierto, sin red, sin payload. Soluciones:
+            - Usa la versión `midi2it-windows-folder.zip` (no se detecta)
+            - Restaura desde *Seguridad de Windows → Historial de protección*
+            - Reporta el falso positivo a [Microsoft](https://www.microsoft.com/en-us/wdsi/filesubmission)
+
+            **Qué hay de nuevo en ${{ github.ref_name }}:** ver los commits incluidos.
           generate_release_notes: true
+
+      - name: Resumen del build
+        if: always()
+        run: |
+          Write-Host "═══════════════════════════════"
+          Write-Host "Build ${{ github.ref_name }} completado"
+          Write-Host "═══════════════════════════════"
+          if (Test-Path "dist/midi2it.exe") {
+            $size = (Get-Item "dist/midi2it.exe").Length / 1MB
+            Write-Host "onefile: dist/midi2it.exe ($([math]::Round($size, 1)) MB)"
+          }
+          if (Test-Path "dist/midi2it-windows-folder.zip") {
+            $size = (Get-Item "dist/midi2it-windows-folder.zip").Length / 1MB
+            Write-Host "onedir:  dist/midi2it-windows-folder.zip ($([math]::Round($size, 1)) MB)"
+          }
