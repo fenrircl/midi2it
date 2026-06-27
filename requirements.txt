@@ -5,3 +5,6 @@ mido>=1.2.0
 # openmpt123 — para validación de .it
 # pvsneslib (smconv) — para conversión a .bnk
 # Build del .exe: pyinstaller>=6.0
+
+# Tests
+pytest>=7.0

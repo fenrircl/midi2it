@@ -56,5 +56,7 @@ Thumbs.db
 ~/.midi2it/
 config.ini
 
-# Templates (tracked separately, regenerated)
-templates/bgm.it
+# NOT excluded: templates/bgm.it (47KB, commiteado en repo, necesario para build)
+# Si lo pierdes: git checkout HEAD -- templates/bgm.it
+# Si quieres ver como se genera uno: python scripts/generate_bgm.py --help
+# (es solo referencia, no se usa en el build)
