@@ -2,7 +2,7 @@
 core/smconv_runner.py — Ejecuta smconv de PVSNESlib para convertir IT→soundbank.
 Busca smconv en ubicaciones comunes y permite exportación directa a .bnk.
 """
-import subprocess, os, shutil, struct, sys
+import subprocess, os, shutil, struct, sys, re
 
 IS_WINDOWS = os.name == 'nt'
 # En Windows el ejecutable es smconv.exe
@@ -92,18 +92,26 @@ def convert_to_soundbank(it_path, output_base=None, bank=5):
             capture_output=True, text=True, timeout=120
         )
         
-        if result.returncode == 0 or result.returncode == 139:  # 139 = segfault but may have output
+        output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        clean_output = re.sub(r"\x1b\[[0-9;]*m", "", output)
+        # smconv currently returns exit code 0 even after rejecting pattern
+        # channels. Never report a bank as usable when diagnostics contain an
+        # error, and don't treat a segmentation fault (139) as success.
+        if result.returncode != 0 or re.search(r"\b(?:fatal\s+)?error\b", clean_output, re.I):
+            errors = clean_output.strip()
+            return {'error': errors[:1500] if errors else f"smconv exited with code {result.returncode}"}
+
+        if result.returncode == 0:
             files = {
                 'bnk': output_base + '.bnk',
                 'asm': output_base + '.asm',
                 'h': output_base + '.h',
             }
-            # Verificar qué archivos se generaron
-            return {k: v for k, v in files.items() if os.path.exists(v)}
-        
-        # Si falló, reportar error
-        errors = result.stderr or result.stdout
-        return {'error': errors[:500] if errors else 'Unknown error'}
+            generated = {k: v for k, v in files.items()
+                         if os.path.isfile(v) and os.path.getsize(v) > 0}
+            if 'bnk' not in generated:
+                return {'error': "smconv terminó sin errores, pero no generó un .bnk válido"}
+            return generated
     
     except FileNotFoundError:
         return None

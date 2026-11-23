@@ -17,11 +17,13 @@ TRACK_COLORS = [
 class TrackPanel(tk.Frame):
     """Panel lateral con lista de pistas y controles."""
 
-    def __init__(self, parent, on_update=None, on_play_track=None, on_remove_track=None, **kwargs):
+    def __init__(self, parent, on_update=None, on_play_track=None, on_remove_track=None,
+                 on_tempo_change=None, **kwargs):
         super().__init__(parent, bg='#111827', **kwargs)
         self.on_update = on_update
         self.on_play_track = on_play_track
         self.on_remove_track = on_remove_track
+        self.on_tempo_change = on_tempo_change
         self.track_widgets = []
         self.selected_track_index = None
 
@@ -72,8 +74,12 @@ class TrackPanel(tk.Frame):
         self.tempo_label = tk.Label(global_frame, text="120 BPM",
                                      fg='#c4b5fd', bg='#182235', font=('Segoe UI', 10, 'bold'))
         self.tempo_label.pack()
-        self.tempo_var.trace('w', lambda *a: self.tempo_label.config(
-            text=f"{self.tempo_var.get()} BPM"))
+        self.tempo_var.trace('w', self._tempo_updated)
+
+    def _tempo_updated(self, *_args):
+        self.tempo_label.config(text=f"{self.tempo_var.get()} BPM")
+        if self.on_tempo_change:
+            self.on_tempo_change()
 
     def _update_track_scroll(self, _event=None):
         self.track_canvas.configure(scrollregion=self.track_canvas.bbox('all'))

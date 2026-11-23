@@ -44,6 +44,12 @@ class MIDI2ITApp(tk.Tk):
         self.current_it_path = None
         self._ui_queue = queue.Queue()
         self._deps_window = None
+        self._playback_request = None
+        self._play_generation = 0
+        self._preview_refresh_after = None
+        self._preview_wav_path = None
+        self.max_sample_sec = 3.0
+        self.max_brr_kb = 48.0
 
         # Estilo
         style = ttk.Style()
@@ -103,7 +109,7 @@ class MIDI2ITApp(tk.Tk):
         workflow.pack(fill=tk.X)
         workflow.pack_propagate(False)
         self.workflow_label = tk.Label(
-            workflow, text='Flujo: abre un MIDI, carga un SoundFont y pulsa Escuchar',
+            workflow, text='Flujo: abre un MIDI, carga un SoundFont y pulsa Reproducir',
             fg='#cbd5e1', bg='#101a2b', font=('Segoe UI', 9))
         self.workflow_label.pack(side=tk.LEFT, padx=20, pady=7)
         self.dependencies_status = tk.Label(workflow, text='Audio: comprobando…',
@@ -115,7 +121,8 @@ class MIDI2ITApp(tk.Tk):
 
         self.track_panel = TrackPanel(
             content, on_update=self._on_update, on_play_track=self._play_track,
-            on_remove_track=self._remove_track, width=270)
+            on_remove_track=self._remove_track, on_tempo_change=self._on_update,
+            width=270)
         self.track_panel.pack_propagate(False)
         self.track_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
 
@@ -130,7 +137,9 @@ class MIDI2ITApp(tk.Tk):
         center.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.preview = PreviewPanel(
             center, on_export=self._do_export_it, on_play_mix=self._play_mix,
-            on_play_track=self._play_single_track, on_export_wav=self._do_export_wav)
+            on_play_track=self._play_single_track, on_export_wav=self._do_export_wav,
+            on_stop=self._stop_preview, on_estimate_brr=self._estimate_it_brr,
+            on_optimize_brr=self._optimize_it_brr)
         self.preview.pack(side=tk.BOTTOM, fill=tk.X)
 
         editor = tk.Frame(center, bg=PANEL, highlightthickness=1,
@@ -173,8 +182,10 @@ class MIDI2ITApp(tk.Tk):
         file_menu.add_command(label='Abrir MIDI…', command=self._load_midi)
         file_menu.add_command(label='Cargar SoundFont…', command=self._load_sf2_via_dialog)
         file_menu.add_separator()
-        file_menu.add_command(label='Exportar IT…', command=self.preview._export_it)
-        file_menu.add_command(label='Exportar WAV…', command=self.preview._export_wav)
+        # El menú se crea antes que PreviewPanel durante el layout; resolver
+        # el callback al hacer clic evita acceder a self.preview demasiado pronto.
+        file_menu.add_command(label='Exportar IT…', command=lambda: self.preview._export_it())
+        file_menu.add_command(label='Exportar WAV…', command=lambda: self.preview._export_wav())
         file_menu.add_separator()
         file_menu.add_command(label='Salir', command=self._quit)
         menu.add_cascade(label='Archivo', menu=file_menu)
@@ -222,7 +233,7 @@ class MIDI2ITApp(tk.Tk):
         elif self.sf2_samples:
             self.workflow_label.config(text='Paso 1: abre un MIDI para escuchar con este SoundFont')
         else:
-            self.workflow_label.config(text='Flujo: abre un MIDI, carga un SoundFont y pulsa Escuchar')
+            self.workflow_label.config(text='Flujo: abre un MIDI, carga un SoundFont y pulsa Reproducir')
 
     # ─── Acciones: cargar MIDI/SF2 ───
 
@@ -233,6 +244,7 @@ class MIDI2ITApp(tk.Tk):
         )
         if not path:
             return
+        self._stop_preview()
         try:
             self.midi_data = midi_parser.parse(path)
             self.midi_path = path
@@ -315,7 +327,12 @@ class MIDI2ITApp(tk.Tk):
 
     def _on_update(self):
         if self.midi_data:
-            self.preview.set_status("🔄 Configuración actualizada")
+            if self._playback_request is not None:
+                if self._preview_refresh_after is not None:
+                    self.after_cancel(self._preview_refresh_after)
+                self._preview_refresh_after = self.after(300, self._restart_preview)
+            elif self.preview:
+                self.preview.set_status("Configuración actualizada")
 
     def _remove_track(self, idx):
         pass  # ya manejado en track_panel
@@ -323,7 +340,7 @@ class MIDI2ITApp(tk.Tk):
     # ─── Reproduccion ───
 
     def _play_mix(self):
-        """Preview mezclado: render MIDI completo a WAV y reproduce."""
+        """Render the current GUI track settings and play the mix."""
         if not self.midi_path:
             self.preview.set_status("❌ Sin MIDI")
             return
@@ -335,14 +352,8 @@ class MIDI2ITApp(tk.Tk):
         if not self._ensure_preview_tools():
             return
 
-        self.preview.set_status("Renderizando mezcla…")
-        midi_path = self.midi_path
-
-        def worker():
-            wav = wav_renderer.render_full_mix(midi_path, sf2_path)
-            self._ui_queue.put((self._play_rendered_wav, (wav, 'Mezcla')))
-
-        threading.Thread(target=worker, daemon=True).start()
+        self._playback_request = {'kind': 'mix'}
+        self._start_preview_render()
 
     def _play_track(self, track_index):
         """Preview de una pista individual (boton ▶ por canal)."""
@@ -359,14 +370,81 @@ class MIDI2ITApp(tk.Tk):
         if not self._ensure_preview_tools():
             return
 
-        self.preview.set_status(f"Renderizando pista {track_index + 1}…")
+        self._playback_request = {'kind': 'track', 'index': track_index}
+        self._start_preview_render()
+
+    def _start_preview_render(self):
+        request = dict(self._playback_request or {})
+        if not request or not self.midi_path:
+            return
+        if self._preview_refresh_after is not None:
+            self.after_cancel(self._preview_refresh_after)
+            self._preview_refresh_after = None
+        self.preview.stop_audio()
+        self._remove_preview_wav()
+        self._play_generation += 1
+        generation = self._play_generation
         midi_path = self.midi_path
-        track = self.track_panel.track_widgets[track_index]
-        midi_track_index = track.midi_track
+        tempo_bpm = self.track_panel.tempo_var.get()
+        track_config = self.track_panel.get_config()['tracks']
+        sf2_path = self._active_sf2_path()
+        if request['kind'] == 'track':
+            index = request['index']
+            if index >= len(self.track_panel.track_widgets):
+                self._stop_preview()
+                return
+            midi_track = self.track_panel.track_widgets[index].midi_track
+            config = next((item for item in track_config
+                           if item.get('midi_track') == midi_track), {})
+            sf2_path = config.get('sf2_path') or sf2_path
+            label = f'Pista {index + 1}'
+            status = f'Reproduciendo pista {index + 1}…'
+        else:
+            midi_track = None
+            label = 'Mezcla'
+            status = 'Preparando reproducción…'
+        if not sf2_path:
+            self.preview.set_status('Carga un SoundFont primero')
+            return
+        self.preview.set_status(status)
+
         def worker():
-            wav = wav_renderer.render_single_track(midi_path, sf2_path, midi_track_index)
-            self._ui_queue.put((self._play_rendered_wav, (wav, f'Pista {track_index + 1}')))
+            if midi_track is None:
+                wav = wav_renderer.render_configured_mix(
+                    midi_path, sf2_path, tempo_bpm=tempo_bpm,
+                    track_config=track_config)
+            else:
+                wav = wav_renderer.render_single_track(
+                    midi_path, sf2_path, midi_track, tempo_bpm=tempo_bpm,
+                    track_config=track_config)
+            self._ui_queue.put((self._play_rendered_wav, (wav, label, generation)))
+
         threading.Thread(target=worker, daemon=True).start()
+
+    def _restart_preview(self):
+        self._preview_refresh_after = None
+        if self._playback_request is not None:
+            self._start_preview_render()
+
+    def _stop_preview(self):
+        if self._preview_refresh_after is not None:
+            self.after_cancel(self._preview_refresh_after)
+            self._preview_refresh_after = None
+        self._play_generation += 1
+        self._playback_request = None
+        if hasattr(self, 'preview'):
+            self.preview.stop_audio()
+            self._remove_preview_wav()
+            self.preview.set_status('Reproducción detenida')
+
+    def _remove_preview_wav(self):
+        path = self._preview_wav_path
+        self._preview_wav_path = None
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     def _active_sf2_path(self):
         selected = self.sf2_browser.get_active_sf2()
@@ -386,28 +464,47 @@ class MIDI2ITApp(tk.Tk):
             self._open_dependencies()
         return False
 
-    def _play_rendered_wav(self, wav_path, label):
+    def _play_rendered_wav(self, wav_path, label, generation):
+        if generation != self._play_generation:
+            if wav_path:
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
+            return
         if not wav_path:
             self.preview.set_status('No se pudo renderizar. Revisa las dependencias de audio.')
+            self._playback_request = None
             return
         try:
             process = wav_renderer.play_wav(wav_path)
         except OSError as exc:
             self.preview.set_status(f'No se pudo iniciar ffplay: {exc}')
+            self._playback_request = None
             return
         if not process:
             self.preview.set_status('No se encontró ffplay. Abre Herramientas → Dependencias.')
+            self._playback_request = None
             return
         self.preview.register_proc(process)
-        self.preview.set_status(f'Reproduciendo {label.lower()}…')
-        self._poll_audio_process(process, label)
+        self._preview_wav_path = wav_path
+        self.preview.set_status(f'Reproduciendo {label.lower()}')
+        self._poll_audio_process(process, label, generation, wav_path)
 
-    def _poll_audio_process(self, process, label):
+    def _poll_audio_process(self, process, label, generation, wav_path):
         if process.poll() is None:
-            self.after(250, self._poll_audio_process, process, label)
+            self.after(250, self._poll_audio_process, process, label, generation, wav_path)
         else:
             self.preview.cleanup_proc(process)
-            self.preview.set_status(f'Fin de reproducción: {label.lower()}')
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
+            if self._preview_wav_path == wav_path:
+                self._preview_wav_path = None
+            if generation == self._play_generation:
+                self._playback_request = None
+                self.preview.set_status(f'Fin: {label.lower()}')
 
     def _play_single_track(self, midi_path, sf2_path):
         # No usado por ahora (legacy callback)
@@ -415,30 +512,89 @@ class MIDI2ITApp(tk.Tk):
 
     # ─── Export ───
 
+    def _collect_it_export_data(self):
+        track_cfg_full = self.track_panel.get_config()
+        track_config = track_cfg_full['tracks']
+        all_samples = {}
+        sample_offsets = {}
+        for sf2_path, samples in self.sf2_samples.items():
+            offset = max(all_samples.keys()) + 1 if all_samples else 0
+            sample_offsets[sf2_path] = offset
+            for sample_index, sample in samples.items():
+                all_samples[sample_index + offset] = sample
+        for track in track_config:
+            sf2_path = track.get('sf2_path')
+            sample_index = track.get('sample_index')
+            if sample_index is not None and sf2_path in sample_offsets:
+                track['sample_index'] = sample_index + sample_offsets[sf2_path]
+        return all_samples, track_config, track_cfg_full['tempo']
+
+    def _estimate_it_brr(self):
+        if not self.midi_data:
+            messagebox.showwarning('Sin MIDI', 'Carga un MIDI antes de estimar.')
+            return
+        try:
+            samples, tracks, _tempo = self._collect_it_export_data()
+            estimate = it_builder.estimate_brr(
+                self.midi_data, samples, tracks,
+                max_sample_sec=self.max_sample_sec,
+                max_brr_kb=self.max_brr_kb)
+        except Exception as exc:
+            messagebox.showerror('No se pudo estimar', str(exc))
+            return
+        state = 'Dentro del presupuesto' if estimate['fits'] else 'Excede el presupuesto'
+        message = (
+            f"{state}\n\n"
+            f"BRR estimado: {estimate['brr_kb']:.1f} / {self.max_brr_kb:.0f} KB\n"
+            f"Pistas activas: {estimate['active_tracks']}\n"
+            f"Samples únicos: {estimate['unique_samples']}\n"
+            f"Duración máxima por sample: {self.max_sample_sec:.2f} s"
+        )
+        if not estimate['fits']:
+            message += '\n\nPulsa Optimizar para ajustar la duración automáticamente.'
+        messagebox.showinfo('Tamaño de samples BRR', message)
+
+    def _optimize_it_brr(self):
+        if not self.midi_data:
+            messagebox.showwarning('Sin MIDI', 'Carga un MIDI antes de optimizar.')
+            return
+        try:
+            samples, tracks, _tempo = self._collect_it_export_data()
+            duration = it_builder.suggest_max_sample_sec(
+                self.midi_data, samples, tracks,
+                max_sample_sec=self.max_sample_sec,
+                max_brr_kb=self.max_brr_kb)
+            if duration is None:
+                messagebox.showerror(
+                    'No cabe en el presupuesto',
+                    'Incluso reduciendo los samples al mínimo, el BRR supera '
+                    '48 KB. Silencia pistas o elige instrumentos con samples más cortos.')
+                return
+            self.max_sample_sec = duration
+            estimate = it_builder.estimate_brr(
+                self.midi_data, samples, tracks,
+                max_sample_sec=duration, max_brr_kb=self.max_brr_kb)
+        except Exception as exc:
+            messagebox.showerror('No se pudo optimizar', str(exc))
+            return
+
+        self.preview.set_status(f"BRR: {estimate['brr_kb']:.1f}/{self.max_brr_kb:.0f} KB")
+        messagebox.showinfo(
+            'Optimización lista',
+            f"Tamaño estimado: {estimate['brr_kb']:.1f} / {self.max_brr_kb:.0f} KB BRR\n"
+            f"Duración máxima por sample: {duration:.2f} s\n\n"
+            'Se aplicará a las próximas exportaciones IT de esta sesión. '
+            'Acortar samples puede cambiar colas y sostenidos; los SF2 originales '
+            'no se modifican.')
+
     def _do_export_it(self, path, with_bnk=True):
         if not self.midi_data:
             messagebox.showwarning("Sin datos", "Carga un MIDI primero.")
             return
 
-        track_cfg_full = self.track_panel.get_config()
-        track_config = track_cfg_full['tracks']
-        tempo = track_cfg_full['tempo']
+        self._stop_preview()
 
-        # Combinar samples de todos los SF2 cargados
-        all_samples = {}
-        sample_offsets = {}
-        for sf2_path, samples in self.sf2_samples.items():
-            # Conservar el SF2 de origen evita colisiones entre índices iguales.
-            offset = max(all_samples.keys()) + 1 if all_samples else 0
-            sample_offsets[sf2_path] = offset
-            for k, v in samples.items():
-                all_samples[k + offset] = v
-        # Reescribir los índices usando el SoundFont seleccionado en cada pista.
-        for tc in track_config:
-            sf2_path = tc.get('sf2_path')
-            sample_index = tc.get('sample_index')
-            if sample_index is not None and sf2_path in sample_offsets:
-                tc['sample_index'] = sample_index + sample_offsets[sf2_path]
+        all_samples, track_config, tempo = self._collect_it_export_data()
 
         it_builder.build(
             midi_data=self.midi_data,
@@ -446,6 +602,8 @@ class MIDI2ITApp(tk.Tk):
             output_path=path,
             track_config=track_config,
             tempo_override=tempo,
+            max_sample_sec=self.max_sample_sec,
+            max_brr_kb=self.max_brr_kb,
         )
         self.current_it_path = path
 
@@ -491,9 +649,13 @@ class MIDI2ITApp(tk.Tk):
             messagebox.showwarning('Sin SoundFont', 'Carga un SoundFont primero.')
             return
 
+        self._stop_preview()
         self.preview.set_status("⚙️ Renderizando WAV...")
         self.update()
-        wav = wav_renderer.render_full_mix(self.midi_path, sf2_path, output_wav=path)
+        wav = wav_renderer.render_configured_mix(
+            self.midi_path, sf2_path, output_wav=path,
+            tempo_bpm=self.track_panel.tempo_var.get(),
+            track_config=self.track_panel.get_config()['tracks'])
         if not wav:
             raise RuntimeError("Fluidsynth no pudo renderizar el MIDI")
         self.preview.set_status(f"✅ WAV: {os.path.basename(path)}")

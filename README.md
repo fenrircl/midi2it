@@ -52,16 +52,10 @@ instala nada en el sistema, **no toca el PATH** y **no requiere reiniciar**:
 midi2it busca cada herramienta primero en `~/.midi2it/tools/` (portátil) y luego en
 el PATH del sistema. Al arrancar avisa si falta algo y ofrece abrir el gestor.
 
-Al arrancar, la GUI avisa si falta algo y ofrece abrir este gestor.
-
 ### Windows
 
-1. Instala Python desde [python.org](https://www.python.org/downloads/) marcando
-   **"tcl/tk and IDLE"** (tkinter) y **"Add python.exe to PATH"**.
-2. `pip install mido`
-3. `python midi2it.py` (abre la GUI). Usa **Herramientas → Dependencias…** y el
-   botón **"Descargar (portátil)"** para obtener fluidsynth/ffmpeg/smconv sin
-   instalar nada en el sistema.
+Para compilar y abrir la GUI, sigue la sección [Build Windows rápido](#build-windows-rápido).
+No hace falta instalar Python manualmente: el script crea `.venv-win` si no existe.
 
 ## 🚀 Uso
 
@@ -85,6 +79,7 @@ python3 midi2it.py
 - Piano roll visual con notas MIDI
 - Control de pistas: instrumento, volumen, transposición, solo/mute
 - Preview de audio con FluidSynth
+- Estimación del presupuesto BRR y optimización de duración antes de exportar
 - Exportación a .it compatible con SNES
 
 ## ⚙️ Pipeline
@@ -126,40 +121,69 @@ midi2it/
 
 ## 🏗️ Build — generar un .exe (Windows)
 
-Se usa [PyInstaller](https://pyinstaller.org/) para empaquetar la aplicación.
-El repositorio incluye un script PowerShell para preparar el entorno, compilar
-y probar la conversión localmente:
+### Build Windows rápido
+
+Abre PowerShell en la carpeta del repositorio. Si el proyecto está dentro de
+WSL, puedes usar su ruta `\\wsl.localhost\Ubuntu\home\...`, aunque una carpeta
+local de Windows (por ejemplo `C:\src\midi2it`) suele compilar más rápido.
+
+**Primera vez o después de cambiar el código:**
 
 ```powershell
-# Desde la raíz del repositorio; compila y abre la GUI.
 powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1
-
-# Pasar el SoundFont para probar la conversión por CLI y el ejecutable.
-powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 `
-  -Sf2Path "C:\SoundFonts\mi-soundfont.sf2"
-
-# Abrir la GUI incluso si también se especificó un SF2.
-powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -Gui
-
-# Solo compilar, o solo convertir sin volver a compilar.
-powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -BuildOnly
-powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 `
-  -Sf2Path "C:\SoundFonts\mi-soundfont.sf2" -SkipBuild
 ```
 
-El script crea `.venv-win` la primera vez y compila una carpeta en `dist\onedir`.
-En ejecuciones siguientes reutiliza ese entorno e instala paquetes solo si faltan;
-puedes usar `-SkipInstall` para omitir incluso esa comprobación. Sin SF2,
-abre la GUI para que puedas cargar el MIDI y el SoundFont desde la aplicación.
-Con `-Sf2Path`, ejecuta también la conversión por CLI desde Python y desde el
-ejecutable. Si `openmpt123` o `smconv` están en `PATH`, valida la salida. El
-build GUI es sin consola; el build de conversión conserva la consola para mostrar
-errores.
+El comando crea/reutiliza `.venv-win`, compila y abre la GUI. En la app, carga
+el MIDI y el SF2; para habilitar audio, abre **Herramientas** y descarga
+FluidSynth y FFmpeg una sola vez.
 
-Las herramientas de audio portátiles que descargues desde **Herramientas** en la
-GUI quedan en `%USERPROFILE%\.midi2it\tools` y se reutilizan al volver a abrir la
-app. No hace falta descargarlas por cada ejecución; solo si se borran o se cambia
-de perfil de Windows.
+**Siguientes veces:** vuelve a ejecutar el mismo comando para recompilar y abrir.
+Los paquetes Python se instalan solo si faltan. Si no cambiaste el código y solo
+quieres abrir el ejecutable existente:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -SkipBuild
+```
+
+El gestor de dependencias instala las herramientas de audio portátiles en
+`%USERPROFILE%\.midi2it\tools`; quedan disponibles al reiniciar la app y no se
+descargan de nuevo en cada ejecución. Solo vuelve a instalarlas si borras esa
+carpeta o cambias de perfil de Windows.
+
+Si el entorno `.venv-win` ya está preparado y quieres saltarte también la
+comprobación de paquetes Python:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -SkipInstall
+```
+
+Para generar solo el build sin abrir la GUI, agrega `-BuildOnly`. Para probar
+la conversión con un SF2 concreto, usa:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 `
+  -Sf2Path "C:\SoundFonts\mi-soundfont.sf2"
+```
+
+### Opciones adicionales
+
+Se usa [PyInstaller](https://pyinstaller.org/) para empaquetar la aplicación.
+Variantes del script para abrir la GUI después de indicar un SF2, o generar un
+ejecutable único:
+
+```powershell
+# Abrir la GUI aunque también se pase un SF2.
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -Gui
+
+# Generar un único .exe en vez de la carpeta onedir.
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 `
+  -BuildMode onefile -BuildOnly
+```
+
+El build queda en `dist\onedir`. Con `-Sf2Path`, el script prueba la conversión
+por CLI desde Python y desde el ejecutable. Si `openmpt123` o `smconv` están en
+`PATH`, valida la salida. El build GUI es sin consola; el de conversión conserva
+la consola para mostrar errores.
 
 Alternativa manual para generar un único ejecutable GUI. El separador de datos
 de PyInstaller en Windows es `;` (en Linux/macOS es `:`):

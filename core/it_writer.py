@@ -35,7 +35,7 @@ def _instrument_header(name, sample_number):
     h[18] = 0  # duplicate check: off
     h[19] = 0  # duplicate action: cut
     h[20:22] = _u16(128)  # short fadeout for note-off/release
-    h[24] = 64  # global volume
+    h[24] = 128  # full instrument volume; preserve MIDI dynamics per note
     h[25] = 32  # default pan, centered
     h[28:30] = _u16(0x0214)  # tracker version
     h[30] = 1  # number of samples
@@ -76,7 +76,9 @@ def _pack_pattern(rows, channels):
             if event is None:
                 continue
             # New-channel mask followed by note, instrument, and volume fields.
-            packed.extend((0x80 | channel, 0x07, event["note"],
+            # IT packed-pattern channel numbers are 1-based. smconv decodes
+            # the low 6 bits as ``channel_id - 1``; zero wraps to channel 64.
+            packed.extend((0x80 | (channel + 1), 0x07, event["note"],
                            event["instrument"], event["volume"]))
         packed.append(0)  # end of row
     return _u16(len(packed)) + _u16(64) + b"\0\0\0\0" + packed
@@ -122,6 +124,71 @@ def _active_tracks(track_config):
             if not t.get("mute") and (not solo or t.get("solo"))]
 
 
+def _prepare_unique_samples(active, samples_data, max_sample_sec):
+    prepared_samples = []
+    sample_numbers = []
+    sample_cache = {}
+    for index, config in enumerate(active):
+        sample = (samples_data or {}).get(config.get("sample_index"))
+        if sample is None:
+            sample = {"name": f"Silence{index}", "rate": 16000,
+                      "data": b"\0\0" * 16, "has_loop": True,
+                      "loop_st": 0, "loop_en": 16}
+        prepared = _prepare_sample(sample, f"Sample{index}", max_sample_sec)
+        # Instruments can share identical sample data instead of duplicating it.
+        key = (prepared["rate"], prepared["data"], prepared["frames"],
+               prepared["has_loop"], prepared["loop_start"], prepared["loop_end"])
+        sample_number = sample_cache.get(key)
+        if sample_number is None:
+            prepared_samples.append(prepared)
+            sample_number = len(prepared_samples)
+            sample_cache[key] = sample_number
+        sample_numbers.append(sample_number)
+    return prepared_samples, sample_numbers
+
+
+def estimate_brr(midi_data, samples_data, track_config, max_sample_sec=3.0,
+                 max_brr_kb=48):
+    """Estimate unique sample memory for the currently active IT instruments."""
+    active = _active_tracks(list(track_config or []))
+    if not active:
+        raise ValueError("No hay pistas activas para estimar")
+    prepared, _sample_numbers = _prepare_unique_samples(
+        active, samples_data, max_sample_sec)
+    pcm_bytes = sum(len(sample["data"]) for sample in prepared)
+    brr_bytes = sum(math.ceil(sample["frames"] / 16) * 9 for sample in prepared)
+    return {
+        "active_tracks": len(active),
+        "unique_samples": len(prepared),
+        "pcm_bytes": pcm_bytes,
+        "brr_bytes": brr_bytes,
+        "brr_kb": brr_bytes / 1024,
+        "budget_kb": max_brr_kb,
+        "fits": max_brr_kb is None or brr_bytes <= int(max_brr_kb * 1024),
+    }
+
+
+def suggest_max_sample_sec(midi_data, samples_data, track_config,
+                           max_sample_sec=3.0, max_brr_kb=48):
+    """Return the longest per-sample duration that fits the BRR budget."""
+    current = estimate_brr(midi_data, samples_data, track_config,
+                           max_sample_sec, max_brr_kb)
+    if current["fits"]:
+        return max_sample_sec
+    low, high = 0.01, float(max_sample_sec)
+    best = None
+    for _ in range(20):
+        middle = (low + high) / 2
+        estimate = estimate_brr(midi_data, samples_data, track_config,
+                                middle, max_brr_kb)
+        if estimate["fits"]:
+            best = middle
+            low = middle
+        else:
+            high = middle
+    return best
+
+
 def build(midi_data, samples_data, output_path, track_config=None,
           tempo_override=None, max_sample_sec=3.0, max_total_pcm_kb=None,
           max_brr_kb=48, rows_per_beat=4):
@@ -152,7 +219,8 @@ def build(midi_data, samples_data, output_path, track_config=None,
     if len(active) > 64:
         raise ValueError("El formato IT admite como máximo 64 instrumentos y samples")
 
-    prepared_samples = []
+    prepared_samples, sample_numbers = _prepare_unique_samples(
+        active, samples_data, max_sample_sec)
     source_tracks = []
     for index, config in enumerate(active):
         midi_index = config.get("midi_track", index)
@@ -161,12 +229,6 @@ def build(midi_data, samples_data, output_path, track_config=None,
             source = midi_tracks[midi_index]
         if source is None:
             source = {"notes": [], "events": []}
-        sample = (samples_data or {}).get(config.get("sample_index"))
-        if sample is None:
-            sample = {"name": f"Silence{index}", "rate": 16000,
-                      "data": b"\0\0" * 16, "has_loop": True,
-                      "loop_st": 0, "loop_en": 16}
-        prepared_samples.append(_prepare_sample(sample, f"Sample{index}", max_sample_sec))
         source_tracks.append((source, config))
 
     pcm_bytes = sum(len(sample["data"]) for sample in prepared_samples)
@@ -176,7 +238,9 @@ def build(midi_data, samples_data, output_path, track_config=None,
                          f"> {max_total_pcm_kb:g} KB; reduce samples o aumenta el límite")
     if max_brr_kb is not None and brr_bytes > int(max_brr_kb * 1024):
         raise ValueError(f"Samples BRR estimados exceden el presupuesto: {brr_bytes / 1024:.1f} KB "
-                         f"> {max_brr_kb:g} KB")
+                         f"> {max_brr_kb:g} KB. Reduce la duración de samples o el número "
+                         "de instrumentos activos; usa ‘Optimizar’ en la GUI para ajustar "
+                         "la duración automáticamente.")
 
     ticks_per_row = tpb / int(rows_per_beat)
     note_events = {}
@@ -227,15 +291,20 @@ def build(midi_data, samples_data, output_path, track_config=None,
     header[0:4] = b"IMPM"
     header[4:30] = _ascii(os.path.basename(midi_data.get("filename", "midi2it")), 26)
     header[0x1E:0x20] = b"\x04\x10"  # row highlights
-    header[0x20:0x28] = struct.pack("<4H", len(orders), len(active), len(active), pattern_count)
+    header[0x20:0x28] = struct.pack(
+        "<4H", len(orders), len(active), len(prepared_samples), pattern_count)
     header[0x28:0x2C] = struct.pack("<2H", 0x0214, 0x0214)
     header[0x2C:0x2E] = _u16(0x0005)  # stereo + instrument mode
     header[0x30] = 128  # global volume
-    header[0x31] = 48   # mix volume
+    header[0x31] = 128  # full mixing volume; the previous 48 made playback very quiet
     header[0x32] = 6    # ticks per row
     header[0x33] = tempo
-    header[0x40:0x80] = bytes([32] * 64)
-    header[0x80:0xC0] = bytes([64] * 64)
+    # Disable unused channels in the IT header. The high bit of channel pan
+    # marks a channel as disabled; leave only the channels we actually encode.
+    header[0x40:0x80] = bytes([0x80] * 64)
+    header[0x40:0x40 + len(active)] = bytes([32] * len(active))
+    header[0x80:0xC0] = bytes(64)
+    header[0x80:0x80 + len(active)] = bytes([64] * len(active))
 
     output = bytearray(header)
     output.extend(bytes(orders))
@@ -249,7 +318,8 @@ def build(midi_data, samples_data, output_path, track_config=None,
     instrument_offsets = []
     for index, config in enumerate(active):
         instrument_offsets.append(len(output))
-        output.extend(_instrument_header(config.get("name", f"Track {index}"), index + 1))
+        output.extend(_instrument_header(config.get("name", f"Track {index}"),
+                                         sample_numbers[index]))
     sample_offsets = []
     for sample in prepared_samples:
         sample_offsets.append(len(output))
