@@ -1,182 +1,109 @@
-"""
-gui/preview.py — Panel de preview, export, stop global.
-Reproduce MIDI con FluidSynth, renderiza a WAV, ffplay con stop real.
-"""
+"""Transport and export controls for the main window."""
+
+import os
+import subprocess
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import subprocess, os, threading, tempfile, time
+from tkinter import filedialog, messagebox, ttk
 
 
 class PreviewPanel(tk.Frame):
-    """Panel inferior con controles de reproduccion, export y WAV."""
+    """Playback and export bar."""
 
     def __init__(self, parent, on_export=None, on_play_mix=None,
-                 on_play_track=None, on_export_wav=None, on_import_midi=None,
-                 on_import_sf2=None, **kwargs):
-        super().__init__(parent, bg='#0f3460', **kwargs)
+                 on_play_track=None, on_export_wav=None, **kwargs):
+        super().__init__(parent, bg='#111827', **kwargs)
         self.on_export = on_export
         self.on_play_mix = on_play_mix
         self.on_play_track = on_play_track
         self.on_export_wav = on_export_wav
-        self.on_import_midi = on_import_midi
-        self.on_import_sf2 = on_import_sf2
-
-        # Procesos activos (para poder matarlos en stop)
         self._procs = []
 
-        # Toolbar superior: import + play + stop
-        top = tk.Frame(self, bg='#0f3460')
-        top.pack(fill=tk.X, pady=4, padx=10)
+        transport = tk.Frame(self, bg='#182235', padx=12, pady=10)
+        transport.pack(fill=tk.X, pady=(0, 1))
+        self.play_btn = ttk.Button(
+            transport, text='▶  Escuchar', command=self._play,
+            style='Accent.TButton', state=tk.DISABLED)
+        self.play_btn.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(transport, text='■  Detener', command=self._stop,
+                   style='Quiet.TButton').pack(side=tk.LEFT)
+        self.status_label = tk.Label(transport, text='Carga un MIDI y un SoundFont',
+                                     fg='#94a3b8', bg='#182235',
+                                     font=('Segoe UI', 8), anchor='e')
+        self.status_label.pack(side=tk.RIGHT, padx=4)
 
-        tk.Button(top, text="📁 MIDI", command=self._import_midi,
-                  bg='#845ef7', fg='white', bd=0, padx=8,
-                  font=('Helvetica', 8)).pack(side=tk.LEFT, padx=2)
-        tk.Button(top, text="📁 SF2", command=self._import_sf2,
-                  bg='#845ef7', fg='white', bd=0, padx=8,
-                  font=('Helvetica', 8)).pack(side=tk.LEFT, padx=2)
-
-        tk.Frame(top, width=20, bg='#0f3460').pack(side=tk.LEFT)
-
-        self.play_btn = tk.Button(top, text="▶ Play mezclado", command=self._play,
-                                   bg='#6bcb77', fg='white', bd=0, padx=10,
-                                   font=('Helvetica', 9, 'bold'))
-        self.play_btn.pack(side=tk.LEFT, padx=2)
-
-        self.stop_btn = tk.Button(top, text="■ Stop", command=self._stop,
-                                   bg='#ff6b6b', fg='white', bd=0, padx=10,
-                                   font=('Helvetica', 9, 'bold'))
-        self.stop_btn.pack(side=tk.LEFT, padx=2)
-
-        # Progreso
-        tk.Label(top, text="Progreso:", fg='#aaa', bg='#0f3460',
-                 font=('Helvetica', 8)).pack(side=tk.LEFT, padx=(20, 5))
-        self.progress = ttk.Progressbar(top, length=200, mode='determinate')
-        self.progress.pack(side=tk.LEFT, padx=5)
-        self.pos_label = tk.Label(top, text="0:00 / 0:00", fg='#aaa',
-                                   bg='#0f3460', font=('Helvetica', 8))
-        self.pos_label.pack(side=tk.LEFT, padx=5)
-
-        # Separador
-        sep = tk.Frame(self, height=1, bg='#1a1a3e')
-        sep.pack(fill=tk.X)
-
-        # Toolbar export
-        bottom = tk.Frame(self, bg='#0f3460')
-        bottom.pack(fill=tk.X, pady=4, padx=10)
-
-        self.export_it_btn = tk.Button(bottom, text="🎵 Exportar IT (SNES)",
-                                        command=self._export_it,
-                                        bg='#4d96ff', fg='white', bd=0, padx=12,
-                                        font=('Helvetica', 9, 'bold'))
-        self.export_it_btn.pack(side=tk.LEFT, padx=2)
-
-        self.export_wav_btn = tk.Button(bottom, text="💾 Exportar WAV",
-                                         command=self._export_wav,
-                                         bg='#20c997', fg='white', bd=0, padx=12,
-                                         font=('Helvetica', 9, 'bold'))
-        self.export_wav_btn.pack(side=tk.LEFT, padx=2)
-
-        # Checkbox bnk
+        footer = tk.Frame(self, bg='#111827', padx=12, pady=9)
+        footer.pack(fill=tk.X)
+        tk.Label(footer, text='EXPORTAR', fg='#64748b', bg='#111827',
+                 font=('Segoe UI', 8, 'bold')).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(footer, text='Exportar IT', command=self._export_it,
+                   style='Quiet.TButton').pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(footer, text='Exportar WAV', command=self._export_wav,
+                   style='Quiet.TButton').pack(side=tk.LEFT, padx=5)
         self.bnk_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(bottom, text="+ .bnk (smconv)",
-                       variable=self.bnk_var, fg='#aaa', bg='#0f3460',
-                       selectcolor='#16213e', font=('Helvetica', 8)).pack(side=tk.LEFT, padx=8)
-
-        # Status
-        self.status_label = tk.Label(bottom, text="Listo", fg='#8888aa',
-                                      bg='#0f3460', font=('Helvetica', 8))
-        self.status_label.pack(side=tk.LEFT, padx=10)
-
-    # ─── Import ───
-
-    def _import_midi(self):
-        if self.on_import_midi:
-            self.on_import_midi()
-
-    def _import_sf2(self):
-        if self.on_import_sf2:
-            self.on_import_sf2()
-
-    # ─── Play / Stop ───
-
+        ttk.Checkbutton(footer, text='.bnk', variable=self.bnk_var,
+                        style='TCheckbutton').pack(side=tk.LEFT, padx=10)
     def _play(self):
         if self.on_play_mix:
             self.on_play_mix()
 
-    def play_track(self, midi_path, sf2_path):
-        """Preview de UNA pista (usa el callback de la app para extraerla)."""
-        if self.on_play_track:
-            self.on_play_track(midi_path, sf2_path)
-
     def _stop(self):
-        """Mata todos los procesos activos y limpia temporales."""
-        for p in self._procs:
+        for process in self._procs[:]:
             try:
-                if hasattr(p, 'poll') and p.poll() is None:
-                    p.terminate()
+                if process.poll() is None:
+                    process.terminate()
                     try:
-                        p.wait(timeout=1)
+                        process.wait(timeout=1)
                     except subprocess.TimeoutExpired:
-                        p.kill()
+                        process.kill()
             except Exception:
                 pass
         self._procs.clear()
-        self.set_status("⏹ Detenido")
+        self.set_status('Reproducción detenida')
 
-    def is_playing(self):
-        return len(self._procs) > 0
+    def register_proc(self, process):
+        self._procs.append(process)
 
-    def register_proc(self, p):
-        """Registra un subprocess para poder matarlo en stop."""
-        self._procs.append(p)
-
-    def cleanup_proc(self, p):
-        """Quita un proceso de la lista (cuando termina naturalmente)."""
-        if p in self._procs:
-            self._procs.remove(p)
-
-    # ─── Export ───
+    def cleanup_proc(self, process):
+        if process in self._procs:
+            self._procs.remove(process)
 
     def _export_it(self):
-        if self.on_export:
-            path = filedialog.asksaveasfilename(
-                defaultextension=".it",
-                filetypes=[("IT files", "*.it"), ("All files", "*.*")],
-                title="Exportar como IT para SNES"
-            )
-            if path:
-                self.set_status("⚙️ Generando IT...")
-                self.update()
-                try:
-                    self.on_export(path, with_bnk=self.bnk_var.get())
-                    self.set_status(f"✅ Exportado: {os.path.basename(path)}")
-                except Exception as e:
-                    self.set_status(f"❌ Error: {e}")
-                    messagebox.showerror("Error", str(e))
+        if not self.on_export:
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension='.it',
+            filetypes=[('Impulse Tracker', '*.it'), ('Todos los archivos', '*.*')],
+            title='Exportar música para SNES')
+        if not path:
+            return
+        self.set_status('Generando archivo IT…')
+        try:
+            self.on_export(path, with_bnk=self.bnk_var.get())
+            self.set_status(f'Exportado: {os.path.basename(path)}')
+        except Exception as exc:
+            self.set_status(f'Error: {exc}')
+            messagebox.showerror('Error de exportación', str(exc))
 
     def _export_wav(self):
-        if self.on_export_wav:
-            path = filedialog.asksaveasfilename(
-                defaultextension=".wav",
-                filetypes=[("WAV files", "*.wav"), ("All files", "*.*")],
-                title="Exportar como WAV"
-            )
-            if path:
-                self.set_status("⚙️ Renderizando WAV...")
-                self.update()
-                try:
-                    self.on_export_wav(path)
-                    self.set_status(f"✅ WAV: {os.path.basename(path)}")
-                except Exception as e:
-                    self.set_status(f"❌ Error: {e}")
-                    messagebox.showerror("Error", str(e))
-
-    # ─── Status / Progress ───
+        if not self.on_export_wav:
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension='.wav',
+            filetypes=[('WAV', '*.wav'), ('Todos los archivos', '*.*')],
+            title='Exportar mezcla a WAV')
+        if not path:
+            return
+        self.set_status('Renderizando WAV…')
+        try:
+            self.on_export_wav(path)
+            self.set_status(f'WAV exportado: {os.path.basename(path)}')
+        except Exception as exc:
+            self.set_status(f'Error: {exc}')
+            messagebox.showerror('Error al exportar WAV', str(exc))
 
     def set_status(self, text):
         self.status_label.config(text=text)
 
     def update_progress(self, current, total):
-        self.progress['value'] = int(current / total * 100) if total else 0
-        self.pos_label.config(text=f"{int(current//60)}:{int(current%60):02d} / "
-                                    f"{int(total//60)}:{int(total%60):02d}")
+        # Conservado para compatibilidad; render y reproducción no exponen progreso temporal.
+        return None

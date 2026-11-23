@@ -6,11 +6,11 @@ from tkinter import ttk
 
 NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 KEYS_OCTAVE = [0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1]  # 1 = black key
-NOTE_COLORS = ['#e8e8e8', '#2a2a2a']  # white bg, black bg
+NOTE_COLORS = ['#111827', '#162235']
 
 TRACK_COLORS = [
-    '#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff',
-    '#ff8fab', '#845ef7', '#20c997', '#ff922b',
+    '#a78bfa', '#38bdf8', '#34d399', '#fbbf24',
+    '#fb7185', '#c084fc', '#2dd4bf', '#f97316',
 ]
 
 
@@ -18,7 +18,7 @@ class PianoRoll(tk.Canvas):
     """Canvas-based piano roll para edición de notas MIDI."""
     
     def __init__(self, parent, midi_data=None, **kwargs):
-        super().__init__(parent, bg='#1a1a2e', highlightthickness=0, **kwargs)
+        super().__init__(parent, bg='#0f1726', highlightthickness=0, **kwargs)
         self.midi_data = midi_data
         self.track_data = []
         
@@ -86,30 +86,31 @@ class PianoRoll(tk.Canvas):
             note_name = NOTE_NAMES[note % 12]
             is_black = KEYS_OCTAVE[note % 12]
             
-            bg_color = '#2a2a3e' if is_black else '#1a1a2e'
+            bg_color = NOTE_COLORS[1] if is_black else NOTE_COLORS[0]
             self.create_rectangle(0, y, self.key_width, y + self.row_height,
-                                  fill=bg_color, outline='#3a3a5e', width=1)
+                                  fill=bg_color, outline='#263449', width=1)
             
             # Label de nota
             if not is_black:
                 self.create_text(5, y + self.row_height // 2,
                                  text=f"{note_name}{octave}",
-                                 anchor='w', fill='#8888aa', font=('Helvetica', 7))
+                                 anchor='w', fill='#94a3b8', font=('Segoe UI', 7))
             
             # Grid vertical (beats)
             for beat in range(0, self.max_beats + 1, 1):
                 x = self._beat_to_x(beat)
                 is_bar = beat % 4 == 0
-                color = '#3a3a5e' if is_bar else '#2a2a4e'
+                color = '#334155' if is_bar else '#202b3d'
                 self.create_line(x, y, x, y + self.row_height, fill=color, width=1 if is_bar else 1)
             
             # Separator line
-            self.create_line(self.key_width, y, w, y, fill='#2a2a4e', width=1)
+            self.create_line(self.key_width, y, w, y, fill='#202b3d', width=1)
         
         # Beat numbers
         for beat in range(0, self.max_beats + 1, 4):
             x = self._beat_to_x(beat)
-            self.create_text(x, h - 12, text=f"{beat//4+1}", fill='#8888aa', font=('Helvetica', 8))
+            self.create_text(x, h - 12, text=f"{beat//4+1}", fill='#94a3b8',
+                             font=('Segoe UI', 8))
         
         # Dibujar notas
         if self.midi_data:
@@ -149,7 +150,7 @@ class PianoRoll(tk.Canvas):
                         self.create_rectangle(
                             x1, y - self.row_height // 2 + 2,
                             max(x1 + 4, x2), y + self.row_height // 2 - 2,
-                            fill=color, outline='white', width=1,
+                            fill=color, outline='#0f1726', width=1,
                             tags=('note', f'track{ti}')
                         )
     
@@ -161,16 +162,16 @@ class PianoRoll(tk.Canvas):
     
     def on_click(self, event):
         """Maneja click para seleccionar/agregar notas."""
-        beat = self._x_to_beat(event.x)
-        note = self._y_to_note(event.y)
+        beat = self._x_to_beat(self.canvasx(event.x))
+        note = self._y_to_note(self.canvasy(event.y))
         if 0 <= beat < self.max_beats:
             self.dragging = {'note': note, 'beat': beat}
     
     def on_drag(self, event):
         """Maneja arrastre para mover notas."""
         if self.dragging:
-            beat = self._x_to_beat(event.x)
-            note = self._y_to_note(event.y)
+            beat = self._x_to_beat(self.canvasx(event.x))
+            note = self._y_to_note(self.canvasy(event.y))
             self.dragging['note'] = note
             self.dragging['beat'] = beat
     

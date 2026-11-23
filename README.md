@@ -111,7 +111,8 @@ midi2it/
 ├── core/
 │   ├── midi_parser.py   # Parsing MIDI (import de mido diferido)
 │   ├── sf2_parser.py    # Parsing SoundFont
-│   ├── it_builder.py    # Construcción de .it
+│   ├── it_builder.py    # API de compatibilidad del exportador
+│   ├── it_writer.py     # Escritura de .it y tablas de offsets
 │   ├── smconv_runner.py # Ejecuta smconv (IT→.bnk), multiplataforma
 │   └── deps.py          # Detección/instalación de dependencias
 ├── gui/
@@ -120,13 +121,48 @@ midi2it/
 │   ├── preview.py       # Preview y exportación
 │   └── deps_dialog.py   # Gestor de dependencias (GUI)
 └── templates/
-    └── bgm.it           # Template estructural
+    └── bgm.it           # Fixture histórica; no se usa al exportar
 ```
 
 ## 🏗️ Build — generar un .exe (Windows)
 
-Se usa [PyInstaller](https://pyinstaller.org/) para empaquetar todo (incluido
-el intérprete de Python y el template `bgm.it`) en un único ejecutable.
+Se usa [PyInstaller](https://pyinstaller.org/) para empaquetar la aplicación.
+El repositorio incluye un script PowerShell para preparar el entorno, compilar
+y probar la conversión localmente:
+
+```powershell
+# Desde la raíz del repositorio; compila y abre la GUI.
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1
+
+# Pasar el SoundFont para probar la conversión por CLI y el ejecutable.
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 `
+  -Sf2Path "C:\SoundFonts\mi-soundfont.sf2"
+
+# Abrir la GUI incluso si también se especificó un SF2.
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -Gui
+
+# Solo compilar, o solo convertir sin volver a compilar.
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 -BuildOnly
+powershell -ExecutionPolicy Bypass -File .\scripts\build_and_test_windows.ps1 `
+  -Sf2Path "C:\SoundFonts\mi-soundfont.sf2" -SkipBuild
+```
+
+El script crea `.venv-win` la primera vez y compila una carpeta en `dist\onedir`.
+En ejecuciones siguientes reutiliza ese entorno e instala paquetes solo si faltan;
+puedes usar `-SkipInstall` para omitir incluso esa comprobación. Sin SF2,
+abre la GUI para que puedas cargar el MIDI y el SoundFont desde la aplicación.
+Con `-Sf2Path`, ejecuta también la conversión por CLI desde Python y desde el
+ejecutable. Si `openmpt123` o `smconv` están en `PATH`, valida la salida. El
+build GUI es sin consola; el build de conversión conserva la consola para mostrar
+errores.
+
+Las herramientas de audio portátiles que descargues desde **Herramientas** en la
+GUI quedan en `%USERPROFILE%\.midi2it\tools` y se reutilizan al volver a abrir la
+app. No hace falta descargarlas por cada ejecución; solo si se borran o se cambia
+de perfil de Windows.
+
+Alternativa manual para generar un único ejecutable GUI. El separador de datos
+de PyInstaller en Windows es `;` (en Linux/macOS es `:`):
 
 ```powershell
 # 1. Instalar dependencias de build
@@ -140,6 +176,7 @@ pyinstaller --onefile --windowed ^
   --collect-submodules core ^
   --collect-submodules gui ^
   --hidden-import midi2it_gui ^
+  --hidden-import mido ^
   midi2it.py
 ```
 
@@ -165,6 +202,7 @@ pyinstaller --onefile --windowed \
   --collect-submodules core \
   --collect-submodules gui \
   --hidden-import midi2it_gui \
+  --hidden-import mido \
   midi2it.py
 ```
 

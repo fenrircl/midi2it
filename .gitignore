@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 *.spec
 .venv/
+.venv-win/
 venv/
 
 # Build
@@ -12,6 +13,7 @@ venv/
 *.obj
 build/
 dist/
+dist_dir/
 
 # PyInstaller (.exe)
 *.exe

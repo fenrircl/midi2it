@@ -10,63 +10,64 @@ import os
 class SF2Browser(tk.Frame):
     """Panel derecho con lista de SF2 cargados e instrumentos disponibles."""
 
-    def __init__(self, parent, on_instrument_pick=None, on_sf2_load=None, **kwargs):
-        super().__init__(parent, bg='#16213e', **kwargs)
+    def __init__(self, parent, on_instrument_pick=None, on_sf2_load=None,
+                 on_sf2_remove=None, **kwargs):
+        super().__init__(parent, bg='#111827', **kwargs)
         self.on_instrument_pick = on_instrument_pick
         self.on_sf2_load = on_sf2_load
+        self.on_sf2_remove = on_sf2_remove
 
         # Estado: {sf2_path: {'name': ..., 'samples': dict, 'programs': dict, 'program_list': list}}
         self.loaded_sf2s = {}
 
         # Header
-        tk.Label(self, text="SOUNDFONTS", fg='#8888aa', bg='#16213e',
-                 font=('Helvetica', 10, 'bold')).pack(pady=(10, 5))
+        tk.Label(self, text="SOUNDFONT", fg='#cbd5e1', bg='#111827',
+                 font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=10, pady=(12, 7))
 
         # Boton cargar
-        btn_frame = tk.Frame(self, bg='#16213e')
-        btn_frame.pack(fill=tk.X, padx=5)
-        tk.Button(btn_frame, text="+ Cargar SF2", command=self._load_sf2,
-                  bg='#0f3460', fg='white', bd=0, padx=10,
-                  font=('Helvetica', 8, 'bold')).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        btn_frame = tk.Frame(self, bg='#111827')
+        btn_frame.pack(fill=tk.X, padx=8)
+        ttk.Button(btn_frame, text='+ Cargar SF2', command=self._load_sf2,
+                   style='Quiet.TButton').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # Lista de SF2 cargados
-        self.sf2_listbox = tk.Listbox(self, bg='#0f3460', fg='white',
-                                       selectbackground='#4d96ff',
-                                       font=('Helvetica', 8), height=4)
-        self.sf2_listbox.pack(fill=tk.X, padx=5, pady=5)
+        self.sf2_listbox = tk.Listbox(self, bg='#0f1726', fg='#e2e8f0',
+                                       selectbackground='#6d45c7',
+                                       selectforeground='white', relief=tk.FLAT,
+                                       font=('Segoe UI', 9), height=4,
+                                       highlightthickness=1, highlightbackground='#263449')
+        self.sf2_listbox.pack(fill=tk.X, padx=8, pady=6)
         self.sf2_listbox.bind('<<ListboxSelect>>', self._on_sf2_select)
 
         # Boton quitar SF2
-        tk.Button(self, text="Quitar SF2 seleccionado", command=self._remove_sf2,
-                  bg='#0f3460', fg='#ff6b6b', bd=0, padx=10,
-                  font=('Helvetica', 7)).pack(fill=tk.X, padx=5)
+        ttk.Button(self, text='Quitar seleccionado', command=self._remove_sf2,
+                   style='Danger.TButton').pack(fill=tk.X, padx=8)
 
         # Separador
-        sep = tk.Frame(self, height=1, bg='#0f3460')
-        sep.pack(fill=tk.X, padx=5, pady=8)
+        sep = tk.Frame(self, height=1, bg='#263449')
+        sep.pack(fill=tk.X, padx=8, pady=10)
 
         # Lista de instrumentos del SF2 seleccionado
-        tk.Label(self, text="INSTRUMENTOS", fg='#8888aa', bg='#16213e',
-                 font=('Helvetica', 10, 'bold')).pack(pady=(0, 5))
+        tk.Label(self, text="INSTRUMENTOS", fg='#cbd5e1', bg='#111827',
+                 font=('Segoe UI', 9, 'bold')).pack(anchor='w', padx=10, pady=(0, 6))
 
         # Search
-        search_frame = tk.Frame(self, bg='#16213e')
-        search_frame.pack(fill=tk.X, padx=5)
+        search_frame = tk.Frame(self, bg='#111827')
+        search_frame.pack(fill=tk.X, padx=8)
         self.search_var = tk.StringVar()
         self.search_var.trace('w', lambda *a: self._refresh_instruments())
-        tk.Entry(search_frame, textvariable=self.search_var, bg='#0f3460', fg='white',
-                 insertbackground='white', font=('Helvetica', 8),
-                 relief=tk.FLAT).pack(fill=tk.X)
+        ttk.Entry(search_frame, textvariable=self.search_var).pack(fill=tk.X)
 
         # Lista de instrumentos
-        inst_frame = tk.Frame(self, bg='#16213e')
-        inst_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        inst_frame = tk.Frame(self, bg='#111827')
+        inst_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=6)
         scrollbar = ttk.Scrollbar(inst_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.inst_listbox = tk.Listbox(
-            inst_frame, bg='#0f3460', fg='white',
-            selectbackground='#6bcb77',
-            font=('Helvetica', 8), yscrollcommand=scrollbar.set
+            inst_frame, bg='#0f1726', fg='#e2e8f0',
+            selectbackground='#6d45c7', selectforeground='white',
+            relief=tk.FLAT, highlightthickness=1, highlightbackground='#263449',
+            font=('Segoe UI', 9), yscrollcommand=scrollbar.set
         )
         self.inst_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.inst_listbox.yview)
@@ -74,21 +75,27 @@ class SF2Browser(tk.Frame):
         self.inst_listbox.bind('<Return>', self._on_inst_pick)
 
         # Boton "Asignar a pista seleccionada"
-        tk.Button(self, text="→ Asignar a pista seleccionada",
-                  command=self._on_inst_pick_click,
-                  bg='#6bcb77', fg='white', bd=0, padx=10, pady=4,
-                  font=('Helvetica', 8, 'bold')).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Button(self, text='Asignar a pista seleccionada',
+                   command=self._on_inst_pick_click,
+                   style='Accent.TButton').pack(fill=tk.X, padx=8, pady=5)
 
         # Status
-        self.status_label = tk.Label(self, text="Carga un SF2 para empezar",
-                                      fg='#666', bg='#16213e',
-                                      font=('Helvetica', 7), wraplength=200, justify=tk.LEFT)
-        self.status_label.pack(fill=tk.X, padx=5, pady=5)
+        self.status_label = tk.Label(self, text='Carga un SoundFont para ver sus instrumentos',
+                                      fg='#94a3b8', bg='#111827',
+                                      font=('Segoe UI', 8), wraplength=240, justify=tk.LEFT)
+        self.status_label.pack(fill=tk.X, padx=10, pady=(2, 10))
 
     # ─── API publica ───
 
     def load_sf2(self, path):
         """Carga un SF2 y actualiza las listas."""
+        if path in self.loaded_sf2s:
+            index = list(self.loaded_sf2s).index(path)
+            self.sf2_listbox.selection_clear(0, tk.END)
+            self.sf2_listbox.selection_set(index)
+            self.sf2_listbox.see(index)
+            self._on_sf2_select()
+            return True
         try:
             from core import sf2_parser
             name = os.path.basename(path).replace('.sf2', '').replace('.SF2', '')
@@ -181,7 +188,13 @@ class SF2Browser(tk.Frame):
         del self.loaded_sf2s[path]
         self.sf2_listbox.delete(idx)
         self._refresh_instruments()
+        if self.loaded_sf2s:
+            next_index = min(idx, len(self.loaded_sf2s) - 1)
+            self.sf2_listbox.selection_set(next_index)
+            self._on_sf2_select()
         self.status_label.config(text=f"🗑️ {os.path.basename(path)} removido")
+        if self.on_sf2_remove:
+            self.on_sf2_remove(path)
 
     def _on_sf2_select(self, event=None):
         self._refresh_instruments()

@@ -102,7 +102,7 @@ def check():
             'desc': 'Render de audio para el preview',
         },
         'ffmpeg': {
-            'ok': bool(executable('ffplay') or executable('ffmpeg')),
+            'ok': bool(executable('ffplay')),
             'required': False, 'kind': 'native',
             'desc': 'Reproduce el preview (ffplay)',
         },

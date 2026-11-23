@@ -93,6 +93,7 @@ jobs:
           --collect-submodules core
           --collect-submodules gui
           --hidden-import midi2it_gui
+          --hidden-import mido
           midi2it.py
 
       # onedir: carpeta con .exe + DLLs. Mucho menos falsos positivos de AV.
@@ -107,6 +108,7 @@ jobs:
           --collect-submodules core
           --collect-submodules gui
           --hidden-import midi2it_gui
+          --hidden-import mido
           midi2it.py
 
       - name: Empaquetar onedir en zip

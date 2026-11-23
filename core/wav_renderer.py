@@ -5,6 +5,19 @@ Soporta render del MIDI completo (mezclado) o de 1 pista individual.
 import os, subprocess, tempfile
 
 
+def _tool_and_env(name):
+    """Resolve system or downloaded portable tools and expose adjacent DLLs."""
+    from core import deps
+
+    executable = deps.executable(name)
+    if not executable:
+        return None, None
+    env = os.environ.copy()
+    tool_dir = os.path.dirname(executable)
+    env['PATH'] = tool_dir + os.pathsep + env.get('PATH', '')
+    return executable, env
+
+
 def render_full_mix(midi_path, sf2_path, output_wav=None, sample_rate=44100):
     """Renderiza el MIDI completo a WAV con todos los canales mezclados.
 
@@ -15,11 +28,14 @@ def render_full_mix(midi_path, sf2_path, output_wav=None, sample_rate=44100):
         fd, output_wav = tempfile.mkstemp(suffix='.wav')
         os.close(fd)
 
+    fluidsynth, env = _tool_and_env('fluidsynth')
+    if not fluidsynth:
+        return None
     try:
         result = subprocess.run(
-            ['fluidsynth', '-F', output_wav, '-r', str(sample_rate),
+            [fluidsynth, '-F', output_wav, '-r', str(sample_rate),
              '-i', sf2_path, midi_path],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=120, env=env
         )
         if result.returncode != 0:
             return None
@@ -51,6 +67,9 @@ def render_single_track(midi_path, sf2_path, track_index, output_wav=None,
         os.close(fd)
 
     # 1) Crear MIDI temporal solo con la pista solicitada
+    fluidsynth, env = _tool_and_env('fluidsynth')
+    if not fluidsynth:
+        return None
     try:
         src = mido.MidiFile(midi_path)
     except Exception:
@@ -102,9 +121,9 @@ def render_single_track(midi_path, sf2_path, track_index, output_wav=None,
         # -c 0: solo canal 0 audible. -L 0: solo enviar a canal 0 (silencia resto)
         # El truco: si nuestra pista esta en canal 0, -c 0 la deja audible
         result = subprocess.run(
-            ['fluidsynth', '-F', output_wav, '-r', str(sample_rate),
+            [fluidsynth, '-F', output_wav, '-r', str(sample_rate),
              '-c', '0', '-L', '0', sf2_path, tmp_midi],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=120, env=env
         )
         # Limpiar midi temp
         try:
@@ -134,14 +153,13 @@ def play_wav(wav_path, on_end=None):
     Returns:
         subprocess.Popen
     """
-    import shutil
-    ffplay = shutil.which('ffplay')
+    ffplay, env = _tool_and_env('ffplay')
     if not ffplay:
         return None
 
     p = subprocess.Popen(
         [ffplay, '-nodisp', '-autoexit', '-loglevel', 'quiet', wav_path],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env
     )
 
     if on_end:
