@@ -12,6 +12,12 @@ Crear música para SNES usando el flujo de trabajo clásico de los juegos origin
 - SoundFont (.sf2) provee los samples de instrumentos
 - El resultado es un .it (Impulse Tracker) que se convierte con smconv a soundbank SPC700
 
+> **Estado y plan:** el writer IT actual no produce un archivo válido para
+> `smconv` (parchea un template en offsets incorrectos y el CLI no asigna
+> samples del SF2). El diagnóstico completo, la especificación IT y el roadmap
+> están en [docs/PLAN-IMPLEMENTACION.md](docs/PLAN-IMPLEMENTACION.md). No usar
+> el `.it` generado en un ROM hasta completar la fase M0/M1.
+
 ## 📦 Instalación
 
 ```bash
