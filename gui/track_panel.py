@@ -302,15 +302,18 @@ class TrackChannel(tk.Frame):
         label = self.instr_var.get()
         sample_index = None
         program = None
+        sf2_path = None
         for v in self.catalog.values():
             if v['label'] == label:
                 sample_index = v['sample_index']
                 program = v['program']
+                sf2_path = v['sf2_path']
                 break
 
         return {
             'instrument': label,  # human-readable
             'sample_index': sample_index,  # numeric
+            'sf2_path': sf2_path,
             'program': program,
             'volume': self.vol_var.get(),
             'transpose': self.transp_var.get(),

@@ -12,11 +12,11 @@ Crear música para SNES usando el flujo de trabajo clásico de los juegos origin
 - SoundFont (.sf2) provee los samples de instrumentos
 - El resultado es un .it (Impulse Tracker) que se convierte con smconv a soundbank SPC700
 
-> **Estado y plan:** el writer IT actual no produce un archivo válido para
-> `smconv` (parchea un template en offsets incorrectos y el CLI no asigna
-> samples del SF2). El diagnóstico completo, la especificación IT y el roadmap
-> están en [docs/PLAN-IMPLEMENTACION.md](docs/PLAN-IMPLEMENTACION.md). No usar
-> el `.it` generado en un ROM hasta completar la fase M0/M1.
+> **Estado:** el exportador ahora escribe un IT desde cero, con tablas de
+> offsets, patrones de 64 filas, instrumentos y samples asignados desde MIDI +
+> SF2. La validación contra `smconv` y reproductores sigue pendiente. Consulta
+> [el plan de implementación](docs/PLAN-IMPLEMENTACION.md) antes de usar la
+> salida en una ROM.
 
 ## 📦 Instalación
 
@@ -137,7 +137,6 @@ pip install pyinstaller mido
 pyinstaller --onefile --windowed ^
   --name midi2it ^
   --paths . ^
-  --add-data "templates/bgm.it;templates" ^
   --collect-submodules core ^
   --collect-submodules gui ^
   --hidden-import midi2it_gui ^
@@ -149,8 +148,7 @@ El ejecutable queda en `dist\midi2it.exe`.
 Notas:
 - `--windowed` evita que se abra una consola junto a la GUI. Quítalo si quieres
   ver mensajes de error en una terminal.
-- El template `bgm.it` se incluye con `--add-data`; en tiempo de ejecución se
-  localiza vía `sys._MEIPASS` (ya soportado en `core/it_builder.py`).
+- El writer genera el archivo IT sin depender del template `bgm.it`.
 - `fluidsynth`, `ffmpeg` y `smconv` **no** se empaquetan (son binarios externos);
   el usuario los instala desde **Herramientas → Dependencias…** en la app.
 - Para un icono propio: añade `--icon=icono.ico`.
@@ -164,7 +162,6 @@ pip install pyinstaller mido
 pyinstaller --onefile --windowed \
   --name midi2it \
   --paths . \
-  --add-data "templates/bgm.it:templates" \
   --collect-submodules core \
   --collect-submodules gui \
   --hidden-import midi2it_gui \

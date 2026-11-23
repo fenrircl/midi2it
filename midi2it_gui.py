@@ -289,20 +289,19 @@ class MIDI2ITApp(tk.Tk):
 
         # Combinar samples de todos los SF2 cargados
         all_samples = {}
+        sample_offsets = {}
         for sf2_path, samples in self.sf2_samples.items():
-            # offset para evitar colisiones de indices
+            # Conservar el SF2 de origen evita colisiones entre índices iguales.
             offset = max(all_samples.keys()) + 1 if all_samples else 0
+            sample_offsets[sf2_path] = offset
             for k, v in samples.items():
                 all_samples[k + offset] = v
-        # Reescribir sample_index en track_config para que apunten al all_samples
+        # Reescribir los índices usando el SoundFont seleccionado en cada pista.
         for tc in track_config:
-            if tc.get('sample_index') is not None:
-                # buscar el sample en cualquier SF2
-                for sf2_path, samples in self.sf2_samples.items():
-                    if tc['sample_index'] in samples:
-                        offset = sum(len(s) for s in list(self.sf2_samples.values())[:list(self.sf2_samples.keys()).index(sf2_path)])
-                        tc['sample_index'] = tc['sample_index'] + offset
-                        break
+            sf2_path = tc.get('sf2_path')
+            sample_index = tc.get('sample_index')
+            if sample_index is not None and sf2_path in sample_offsets:
+                tc['sample_index'] = sample_index + sample_offsets[sf2_path]
 
         it_builder.build(
             midi_data=self.midi_data,

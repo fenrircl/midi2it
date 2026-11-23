@@ -5,11 +5,16 @@ de PVSNESlib, con presupuesto SNES (8 canales, ≤58 KB de samples BRR, loops
 alineados, echo opcional y SFX), para que VS-SNES pueda generar su música desde
 MIDI en vez de editar un `.it` a mano.
 
-**Estado:** el pipeline actual produce un archivo que `openmpt123` abre y que
-`smconv` convierte, pero **no es un IT correcto**: el writer parchea un template
-en offsets equivocados y las notas del MIDI no llegan al pattern. Los tests
-pasan porque solo verifican tamaño y que `openmpt123` vea samples; el template
-ya trae 11 samples, así que un archivo con 0 PCM también pasa.
+**Estado actual (2026-11-23):** el writer basado en template fue reemplazado
+por `core/it_writer.py`, que construye headers, offsets, instrumentos, samples
+y patterns. El CLI asigna samples SF2 por programa MIDI y la GUI conserva el
+SoundFont de origen al combinar bibliotecas. La implementación aún requiere
+validación con un parser IT independiente, `openmpt123` y `smconv`; por eso no
+se considera completada la fase M0/M1.
+
+Los apartados de diagnóstico y evidencia siguientes describen el estado
+anterior al cambio y se conservan como registro de por qué se reemplazó el
+writer.
 
 **Revisión:** 2026-11-23, contra `01f0294` (main local, un commit de CI sobre
 `8d0a9db`).

@@ -29,9 +29,12 @@ Ejemplos:
     parser.add_argument('--tempo', type=float, default=0, help='Tempo forzado (BPM)')
     parser.add_argument('-g', '--gui', action='store_true', help='Abrir interfaz gráfica')
     parser.add_argument('-v', '--verbose', action='store_true', help='Mostrar información detallada')
-    parser.add_argument('--snes', action='store_true', help='Optimizar para SNES: truncar samples a ~3s máx, presupuesto 96KB')
+    parser.add_argument('--snes', action='store_true', help='Limitar samples para SNES y validar presupuesto BRR')
     parser.add_argument('--max-sample-sec', type=float, default=3.0, help='Duración máxima por sample en segundos (default: 3.0)')
-    parser.add_argument('--max-pcm-kb', type=float, default=96, help='Presupuesto total PCM en KB (default: 96)')
+    parser.add_argument('--max-pcm-kb', type=float, default=None,
+                        help='Límite PCM opcional en KB (modo --snes: default 96)')
+    parser.add_argument('--max-brr-kb', type=float, default=48, help='Presupuesto BRR estimado en KB (default: 48)')
+    parser.add_argument('--rows-per-beat', type=int, default=4, help='Resolución del patrón (filas por beat, default: 4)')
 
     args = parser.parse_args()
 
@@ -69,18 +72,47 @@ Ejemplos:
     samples = sf2_parser.parse(args.sf2)
     print(f"   Samples extraídos: {len(samples)}")
 
+    # El CLI también debe asignar un sample real a cada pista MIDI.
+    program_samples = sf2_parser.extract_instrument_programs(args.sf2)
+    track_config = []
+    available_ids = set(samples)
+    for i, track in enumerate(midi['tracks']):
+        program = track.get('program', 0)
+        sample_index = program_samples.get(program)
+        if sample_index not in available_ids:
+            sample_index = next(iter(samples), None)
+            if sample_index is not None:
+                print(f"   Aviso: programa {program} sin sample disponible; se usará {samples[sample_index]['name']}")
+        track_config.append({
+            'midi_track': track.get('index', i),
+            'program': program,
+            'sample_index': sample_index,
+            'volume': 100,
+            'transpose': 0,
+            'solo': False,
+            'mute': False,
+            'name': track.get('name', f'Track {i}'),
+        })
+
     # 3. Build IT
     print(f"\n🔧 Generando IT...")
-    snes_kwargs = {}
+    snes_kwargs = {
+        'max_sample_sec': args.max_sample_sec,
+        'max_brr_kb': args.max_brr_kb,
+    }
     if args.snes:
-        snes_kwargs['max_sample_sec'] = args.max_sample_sec
+        snes_kwargs['max_total_pcm_kb'] = args.max_pcm_kb if args.max_pcm_kb is not None else 96
+        print(f"   🎮 Modo SNES: max {args.max_sample_sec}s por sample, "
+              f"presupuesto {args.max_brr_kb}KB BRR estimado")
+    elif args.max_pcm_kb is not None:
         snes_kwargs['max_total_pcm_kb'] = args.max_pcm_kb
-        print(f"   🎮 Modo SNES: max {args.max_sample_sec}s por sample, {args.max_pcm_kb}KB total PCM")
     it_builder.build(
         midi_data=midi,
         samples_data=samples,
         output_path=args.output,
+        track_config=track_config,
         tempo_override=args.tempo or None,
+        rows_per_beat=args.rows_per_beat,
         **snes_kwargs,
     )
 
