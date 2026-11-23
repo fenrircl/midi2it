@@ -1,0 +1,164 @@
+{
+  "/home/fenrir/midi2it/.claude/settings.local.json": {
+    "mtime": 1781639204.3264894,
+    "seen": 1795440780.704478,
+    "ast_hash": "4d79e8b92c934d3a7c5f618a9f21ce16",
+    "semantic_hash": "4d79e8b92c934d3a7c5f618a9f21ce16"
+  },
+  "/home/fenrir/midi2it/__init__.py": {
+    "mtime": 1781633414.6746192,
+    "seen": 1795440780.7044837,
+    "ast_hash": "b105b8b68fb494be61d1dfeec7929451",
+    "semantic_hash": "b105b8b68fb494be61d1dfeec7929451"
+  },
+  "/home/fenrir/midi2it/core/__init__.py": {
+    "mtime": 1781634454.8745973,
+    "seen": 1795440780.7044864,
+    "ast_hash": "8fef52c76312c18a4c7641d0607e90ce",
+    "semantic_hash": "8fef52c76312c18a4c7641d0607e90ce"
+  },
+  "/home/fenrir/midi2it/core/deps.py": {
+    "mtime": 1782603860.9311993,
+    "seen": 1795440780.704488,
+    "ast_hash": "38ef50e37add94bd82426afcc37590d7",
+    "semantic_hash": "38ef50e37add94bd82426afcc37590d7"
+  },
+  "/home/fenrir/midi2it/core/it_builder.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.7044897,
+    "ast_hash": "8432eca0c95997eaf67ea62217539d87",
+    "semantic_hash": "8432eca0c95997eaf67ea62217539d87"
+  },
+  "/home/fenrir/midi2it/core/midi_parser.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.7044914,
+    "ast_hash": "aa5720aeb68ec19bf9e6b41fedb6313a",
+    "semantic_hash": "aa5720aeb68ec19bf9e6b41fedb6313a"
+  },
+  "/home/fenrir/midi2it/core/sf2_parser.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.704493,
+    "ast_hash": "f5231db3f20872c5b1bb92c0ac59d569",
+    "semantic_hash": "f5231db3f20872c5b1bb92c0ac59d569"
+  },
+  "/home/fenrir/midi2it/core/smconv_runner.py": {
+    "mtime": 1781639689.710479,
+    "seen": 1795440780.7044942,
+    "ast_hash": "a7d602cf2e23a7fb492b5c8985059b55",
+    "semantic_hash": "a7d602cf2e23a7fb492b5c8985059b55"
+  },
+  "/home/fenrir/midi2it/core/wav_renderer.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.704496,
+    "ast_hash": "cf6f7095ed468dc3024ea72911abe2f8",
+    "semantic_hash": "cf6f7095ed468dc3024ea72911abe2f8"
+  },
+  "/home/fenrir/midi2it/gui/__init__.py": {
+    "mtime": 1781634462.2705972,
+    "seen": 1795440780.7044973,
+    "ast_hash": "ec56fe6f2c785c9f55c5403c75cf8b6b",
+    "semantic_hash": "ec56fe6f2c785c9f55c5403c75cf8b6b"
+  },
+  "/home/fenrir/midi2it/gui/deps_dialog.py": {
+    "mtime": 1781639868.9424763,
+    "seen": 1795440780.7044988,
+    "ast_hash": "78ba04aef1c9afcfeb341066ee43386d",
+    "semantic_hash": "78ba04aef1c9afcfeb341066ee43386d"
+  },
+  "/home/fenrir/midi2it/gui/piano_roll.py": {
+    "mtime": 1781633414.6786191,
+    "seen": 1795440780.7045004,
+    "ast_hash": "a4fca424aa1ed579866570724303a511",
+    "semantic_hash": "a4fca424aa1ed579866570724303a511"
+  },
+  "/home/fenrir/midi2it/gui/preview.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.704502,
+    "ast_hash": "c90864f30fcf3c43c8ff9c10bbe54814",
+    "semantic_hash": "c90864f30fcf3c43c8ff9c10bbe54814"
+  },
+  "/home/fenrir/midi2it/gui/sf2_browser.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.7045035,
+    "ast_hash": "600021d6f7581cb796a13bfb8ab0f907",
+    "semantic_hash": "600021d6f7581cb796a13bfb8ab0f907"
+  },
+  "/home/fenrir/midi2it/gui/track_panel.py": {
+    "mtime": 1795440475.4312189,
+    "seen": 1795440780.7045047,
+    "ast_hash": "a32e0afc8fd5a8276287bc0a418cb6a4",
+    "semantic_hash": "a32e0afc8fd5a8276287bc0a418cb6a4"
+  },
+  "/home/fenrir/midi2it/midi2it.py": {
+    "mtime": 1782603860.9351993,
+    "seen": 1795440780.7045064,
+    "ast_hash": "b90f741287eb8d9a398fc6b56b36dbfa",
+    "semantic_hash": "b90f741287eb8d9a398fc6b56b36dbfa"
+  },
+  "/home/fenrir/midi2it/midi2it_gui.py": {
+    "mtime": 1795440475.435219,
+    "seen": 1795440780.7045078,
+    "ast_hash": "14789af349d292fe54e55af7ef78fc73",
+    "semantic_hash": "14789af349d292fe54e55af7ef78fc73"
+  },
+  "/home/fenrir/midi2it/scripts/generate_bgm.py": {
+    "mtime": 1795440475.435219,
+    "seen": 1795440780.7045095,
+    "ast_hash": "c2c34b144348e25afa0139c2a97e81a0",
+    "semantic_hash": "c2c34b144348e25afa0139c2a97e81a0"
+  },
+  "/home/fenrir/midi2it/skills-lock.json": {
+    "mtime": 1795440483.1995065,
+    "seen": 1795440780.704511,
+    "ast_hash": "c56ab3ac05a6130b09c5f36f42ca1a97",
+    "semantic_hash": "c56ab3ac05a6130b09c5f36f42ca1a97"
+  },
+  "/home/fenrir/midi2it/tests/test_e2e.py": {
+    "mtime": 1795440475.435219,
+    "seen": 1795440780.7045126,
+    "ast_hash": "8530b29b5d071d803585fabeecee4422",
+    "semantic_hash": "8530b29b5d071d803585fabeecee4422"
+  },
+  "/home/fenrir/midi2it/.agents/skills/python-executor/SKILL.md": {
+    "mtime": 1795440483.1915061,
+    "seen": 1795440780.7045138,
+    "ast_hash": "b884fd5f0222d743d3cd2dd9dab1136a",
+    "semantic_hash": "b884fd5f0222d743d3cd2dd9dab1136a"
+  },
+  "/home/fenrir/midi2it/.agents/skills/python-testing-patterns/SKILL.md": {
+    "mtime": 1795440483.1995065,
+    "seen": 1795440780.7045152,
+    "ast_hash": "96545dc675842aecbcf4c46deb90eae7",
+    "semantic_hash": "96545dc675842aecbcf4c46deb90eae7"
+  },
+  "/home/fenrir/midi2it/.agents/skills/python-testing-patterns/references/advanced-patterns.md": {
+    "mtime": 1795440483.1995065,
+    "seen": 1795440780.7045174,
+    "ast_hash": "e5a576919073289bd4e7fd7f9adb8388",
+    "semantic_hash": "e5a576919073289bd4e7fd7f9adb8388"
+  },
+  "/home/fenrir/midi2it/.agents/skills/python-testing-patterns/references/details.md": {
+    "mtime": 1795440483.1995065,
+    "seen": 1795440780.7045188,
+    "ast_hash": "6b6cc36292ee1fc8bb31c8004e755388",
+    "semantic_hash": "6b6cc36292ee1fc8bb31c8004e755388"
+  },
+  "/home/fenrir/midi2it/.github/workflows/release.yml": {
+    "mtime": 1781638758.7984993,
+    "seen": 1795440780.7045202,
+    "ast_hash": "2849323e4b94b40db164d73b5e737f2f",
+    "semantic_hash": "2849323e4b94b40db164d73b5e737f2f"
+  },
+  "/home/fenrir/midi2it/README.md": {
+    "mtime": 1781639982.722474,
+    "seen": 1795440780.7045217,
+    "ast_hash": "84cb9584f66768016f39a7d16853344a",
+    "semantic_hash": "84cb9584f66768016f39a7d16853344a"
+  },
+  "/home/fenrir/midi2it/requirements.txt": {
+    "mtime": 1795440475.435219,
+    "seen": 1795440780.7045233,
+    "ast_hash": "f372a766edcd9f2985ca1871dc9f6874",
+    "semantic_hash": "f372a766edcd9f2985ca1871dc9f6874"
+  }
+}
